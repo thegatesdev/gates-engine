@@ -1,5 +1,5 @@
-import { Application, DisplayObject, Graphics, GraphicsGeometry } from 'pixi.js';
-import { ComponentData, GatesECS } from '../lib/GatesECS';
+import { Application, Container, DisplayObject, Graphics, GraphicsGeometry } from 'pixi.js';
+import { ComponentClass, ComponentData, EntitySet, GatesECS, System } from '../lib/GatesECS';
 
 const APP = new Application({width: 1800, height: 1000});
 const ECS = new GatesECS();
@@ -13,8 +13,10 @@ const enum TickPhase{
     PRESENTATION,
 }
 
+// COMPONENTS
+
 class DisplayComponent extends ComponentData{
-    constructor(public readonly object: DisplayObject){
+    constructor(public readonly object: Container){
         super();
         APP.stage.addChild(object);
     }
@@ -30,6 +32,16 @@ class PositionComponent extends ComponentData{
 }
 
 // SYSTEMS
+
+ECS.addSystem(new class extends System{
+    public componentsRequired: Set<ComponentClass<any>> = new Set([PositionComponent, DisplayComponent]);
+    public phase: number = TickPhase.PRESENTATION;
+    public update(engine: GatesECS, entities: EntitySet): void {
+        entities.forEach((ec) => {
+            // Add position component ref to displaycomp.
+        })
+    }
+});
 
 // INIT
 ECS.init();
