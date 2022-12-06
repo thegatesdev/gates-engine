@@ -1,7 +1,12 @@
 import { Application, Container, DisplayObject, Graphics, GraphicsGeometry } from 'pixi.js';
-import { ComponentClass, ComponentData, EntitySet, GatesECS, System } from '../lib/GatesECS';
+import { ComponentClass, ComponentData, EntitySet, GatesECS, System } from '../LIB/GatesECS';
 
-const APP = new Application({width: 1800, height: 1000});
+const APP = new Application(
+    {
+        resizeTo: window,
+        autoDensity: true,
+    }
+    );
 const ECS = new GatesECS();
 
 document.body.appendChild(APP.view as any);
@@ -16,7 +21,7 @@ const enum TickPhase{
 // COMPONENTS
 
 class DisplayComponent extends ComponentData{
-    constructor(public readonly object: Container){
+    constructor(public readonly object: Container, public readonly pos: PositionComponent){
         super();
         APP.stage.addChild(object);
     }
@@ -26,7 +31,7 @@ class DisplayComponent extends ComponentData{
 }
 
 class PositionComponent extends ComponentData{
-    constructor(public readonly position: {x:number, y:number} = {x:0,y:0}) {
+    constructor(public readonly x: number = 0, public readonly y: number = 0) {
         super();
     }
 }
@@ -38,7 +43,10 @@ ECS.addSystem(new class extends System{
     public phase: number = TickPhase.PRESENTATION;
     public update(engine: GatesECS, entities: EntitySet): void {
         entities.forEach((ec) => {
-            // Add position component ref to displaycomp.
+            ec.get(DisplayComponent).forEach(dn => {
+                let d = engine.getComponent(dn, DisplayComponent);
+                d.object.position.set(d.pos.x, d.pos.y);
+            });
         })
     }
 });
@@ -56,6 +64,5 @@ APP.ticker.add(() => {
 
 // ---
 const player = ECS.entity();
-ECS.addComponent(player, new DisplayComponent(new Graphics().beginFill(0xffff).drawRect(0,0,50,50)))
-ECS.addComponent(player, new PositionComponent());
-ECS.getComponent(player, )
+//ECS.addComponent(player, new PositionComponent());
+//ECS.addComponent(player, new DisplayComponent(new Graphics().beginFill(0xffff).drawRect(0,0,50,50), ))

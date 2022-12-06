@@ -6,7 +6,7 @@ server.get('/', (req, res) => {
   res.sendFile("index.html", {root: "./src/server"});
 });
 
-server.use(express.static("dist/client"));
+server.use(express.static("dist"));
 
 server.listen(port, () => {
   console.log(`Server listening; port: ${port}`)

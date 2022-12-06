@@ -50,10 +50,10 @@ const exportServer = {
 const exportTestGame = {
   name: 'test_game',
   target: 'web',
-  entry: './src/client/test_game/test_game.ts', 
+  entry: './src/test_game/test_game.ts', 
   output: {
     filename: 'test_game.js',
-    path: path.resolve(__dirname, 'dist/client/test_game'),
+    path: path.resolve(__dirname, 'dist/test_game'),
     publicPath: "/test_game/"
   },
   module: {
@@ -66,6 +66,7 @@ const exportTestGame = {
   },
   plugins: [
     new HtmlWebpackPlugin({
+      template: 'src/test_game/test_game.ejs',
       filename: 'test_game.html',
       minify: true,
     }),
