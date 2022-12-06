@@ -219,23 +219,29 @@ export class GatesECS {
         return this.components.get(component) as T;
     }
 
-    public addTo(onto: Entity, entity: Entity): void {
-        this.getComponents(onto).add(entity, this.components.get(entity));
-        this.checkE(onto);
+    public addTo(onto: Entity, ...entities: Entity[]): Entity {
+        for (const e of entities) {
+            this.getComponents(onto).add(e, this.components.get(e));
+            this.checkE(onto);
+        }
+        return onto;
     }
 
-    public addComponent(onto: Entity, data: ComponentData){
-        this.addTo(onto, this.component(data));
+    public addComponent(onto: Entity, data: ComponentData): Entity{
+        return this.addTo(onto, this.component(data));
     }
 
-    public removeFrom(from: Entity, entity: Entity): void{
-        this.getComponents(from).remove(entity);
-        this.checkE(from);
+    public removeFrom(from: Entity, ...entities: Entity[]): Entity{
+        for (const e of entities) {
+            this.getComponents(from).remove(e);
+            this.checkE(from);
+        }
+        return from;
     }
 
     // SYSTEMS
 
-    public addSystem(system: System): void {
+    public addSystem(system: System): System {
         const set = new EntitySet();
         this.allSystems.set(system, set);
         if (!this.phasedSystems.has(system.phase)) this.phasedSystems.set(system.phase, new Map());
@@ -243,6 +249,7 @@ export class GatesECS {
         for (const entity of this.entities.getEntities()) {
             this.checkES(entity, system);
         }
+        return system;
     }
 
     public removeSystem(system: System): void {
