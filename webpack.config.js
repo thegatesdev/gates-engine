@@ -50,11 +50,14 @@ const exportServer = {
 const exportTestGame = {
   name: 'test_game',
   target: 'web',
-  entry: './src/test_game/test_game.ts', 
+  entry: {
+    client: './src/test_game/client.ts',
+    server: './src/test_game/server.ts',
+  },
   output: {
-    filename: 'test_game.js',
+    filename: '[name].js',
     path: path.resolve(__dirname, 'dist/test_game'),
-    publicPath: "/test_game/"
+    publicPath: "/[name]/"
   },
   module: {
     rules: [
@@ -69,6 +72,7 @@ const exportTestGame = {
       template: 'src/test_game/test_game.ejs',
       filename: 'test_game.html',
       minify: true,
+      chunks: ["client"]
     }),
   ],
   experiments: {
