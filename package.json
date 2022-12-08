@@ -14,6 +14,7 @@
     "@types/pixi.js": "^5.0.0",
     "@types/webpack-node-externals": "^2.5.3",
     "concurrently": "^7.6.0",
+    "copy-webpack-plugin": "^11.0.0",
     "fork-ts-checker-webpack-plugin": "^7.2.13",
     "html-webpack-plugin": "^5.5.0",
     "html-webpack-tags-plugin": "^3.0.2",

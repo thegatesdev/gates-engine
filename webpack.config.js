@@ -2,7 +2,7 @@ const path = require('path');
 
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const HtmlWebpackTagsPlugin = require('html-webpack-tags-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 const { merge } = require('webpack-merge');
 const nodeExternals = require('webpack-node-externals');
 
@@ -47,28 +47,28 @@ const exportServer = {
   },
 }
 
-const exportTestGameClient = {
-  name: 'test_game_client',
-  target: 'web',
-  entry: './src/test_game/client.ts',
-  output: {
-    filename: 'client.js',
-    path: path.resolve(__dirname, 'dist/test_game/client'),
-    publicPath: "/test_game/client/"
+const exportTestGame = {
+  name: 'test_game',
+  entry: {
+    client: './src/test_game/client.ts',
+    server: './src/test_game/server.ts'
   },
-  module: {
-    rules: [
-      {
-        test: /\.(png|svg|jpg|jpeg|gif)$/i,
-        type: 'asset/resource',
-      },
-    ],
+  output: {
+    filename: '[name].js',
+    path: path.resolve(__dirname, 'dist/test_game'),
+    publicPath: "/"
   },
   plugins: [
     new HtmlWebpackPlugin({
       template: 'src/test_game/index.ejs',
       filename: 'index.html',
       minify: true,
+      chunks: ['client'],
+    }),
+    new CopyWebpackPlugin({
+      patterns: [
+          { from: "src/test_game/assets", to: "assets/" }
+      ]
     }),
   ],
   experiments: {
@@ -76,22 +76,7 @@ const exportTestGameClient = {
   },
 }
 
-const exportTestGameServer = {
-  name: 'test_game_server',
-  target: 'node',
-  entry: './src/test_game/server.ts',
-  output: {
-    filename: 'server.js',
-    path: path.resolve(__dirname, 'dist/test_game/server'),
-    publicPath: "/server/"
-  },
-  experiments: {
-    futureDefaults: true,
-  },
-}
-
 module.exports = [
   merge(exportDefaults, exportServer),
-  merge(exportDefaults, exportTestGameClient),
-  merge(exportDefaults, exportTestGameServer),
+  merge(exportDefaults, exportTestGame),
 ]

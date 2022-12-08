@@ -1,8 +1,6 @@
 import { Application, Graphics, Sprite, Texture } from 'pixi.js';
 import { ComponentClass, EntityData, GatesECS, getComponentsOf, System } from '../LIB/GatesECS';
 import { DisplayComponent, PositionComponent, tickECS, TickPhase } from './shared';
-// @ts-ignore
-import BunnyTexture from './assets/bunny.jpg'
 
 const APP = new Application({
         resizeTo: window,
@@ -56,7 +54,7 @@ APP.ticker.add(() => {
     tickECS(ECS);
 }, this)
 
-const bunnyTex = Texture.from(BunnyTexture);
+const bunnyTex = Texture.from("./assets/bunny.jpg");
 
 // ---
 const player = ECS.entity();
