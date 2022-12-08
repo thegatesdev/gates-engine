@@ -1,12 +1,12 @@
-// ENGINE
-
-import * as e from "express";
+// TYPES
 
 export type Entity = number
 
 export type ComponentData = any;
 
 export type ComponentClass<T extends ComponentData> = new (...args: any[]) => T
+
+// BASE
 
 export abstract class System{
     public enabled: boolean = true;
@@ -18,76 +18,42 @@ export abstract class System{
     public uncomplete?(ecs: GatesECS, entity: Entity, data: EntityData): void;
 }
 
-export class Prefab{
-    protected components: Map<ComponentClass<ComponentData>, (c: Entity) => ComponentData> = new Map();
-    protected createFn!: (eng:GatesECS,entity:Entity) => void;
-
-    addComponent<T extends ComponentData>(compClass: ComponentClass<T>, comp: (c: Entity) => T){
-        if (!this.components.has(compClass)){
-            this.components.set(compClass,comp);
-        }
-        return this;
-    }
-
-    onCreate(fn: (eng: GatesECS, entity: number) => void){
-        this.createFn = fn;
-    }
-
-    create(engine: GatesECS): Entity{
-        const entity = engine.entity();
-        this.components.forEach(c => engine.addTo(entity, engine.component(c.apply(engine, [entity]))));
-        this.createFn?.apply(this, [engine, entity]);
-        return entity;
-    }
-}
-
 export class EntityData{
     public children: Set<Entity> = new Set();
     public componentClasses: Set<Function> = new Set();
 }
 
-export function hasAllComponents(e: EntityData, compClasses: Set<ComponentClass<any>>){
-    const have = e.componentClasses;
-    for (const compClass of compClasses) {
-        if (!have.has(compClass)) return false;
-    }
-    return true;
-}
-
-export function * getComponentsOf<T extends ComponentData>(ecs: GatesECS, e: EntityData, compClass: ComponentClass<T>): Generator<T>{
-    let data;
-    for (const child of e.children) {
-        data = ecs.getComponentData(child, compClass);
-        if (data) yield data;
-    }
-}
+// ENGINE
 
 export class GatesECS {
+
+    private isInitialized = false;
+
     private entities = new Map<Entity, EntityData>();
     private components = new Map<Entity, ComponentData>();
 
     private systems = new Map<System, Map<Entity, EntityData>>();
     private phasedSystems = new Map<number, Set<System>>();
 
-    private isInitialized = false;
-
     // --
 
-    private nextEntityID = 0
+    private _nextEntityID = 0;
     private entitiesToDestroy: Entity[] = [];
 
-    public tick(phase: number): void{
-        if (!this.isInitialized) throw new Error("not initialized");
-        if (!this.phasedSystems.has(phase)) return;
-        for (let system of this.phasedSystems.get(phase)!) {
-            if (system.enabled){
-                system.update(this, this.systems.get(system));
+    public tick(): void{
+        for (const systems of this.phasedSystems.values()) {
+            for (let system of systems) {
+                if (system.enabled){
+                    system.update(this, this.systems.get(system));
+                }
             }
         }
+        this.tickDestroy();
     }
 
     public tickDestroy(): void {
-        while (this.entitiesToDestroy.length > 0) {
+        const len = this.entitiesToDestroy.length;
+        for (let i = 0; i < len; i++) {
             this.remove(this.entitiesToDestroy.pop()!);
         }
     }
@@ -102,7 +68,7 @@ export class GatesECS {
 
     // ENTITIES
 
-    public entity(entityID: number = this.nextEntityID++): Entity {
+    public entity(entityID: number = this._nextEntityID++): Entity {
         if (this.entities.has(entityID)) throw new Error("Entity ID "+entityID+" is already in use");
         this.entities.set(entityID, new EntityData());
         return entityID;
@@ -130,8 +96,8 @@ export class GatesECS {
         return component;
     }
 
-    public getEntityData(entity: Entity): EntityData{
-        return this.entities.get(entity)!;
+    public getEntityData(entity: Entity): EntityData | undefined{
+        return this.entities.get(entity);
     }
 
     public getComponentData<T extends ComponentData>(component: Entity, _compClass?: ComponentClass<T>): T | undefined{
@@ -149,11 +115,11 @@ export class GatesECS {
         return comp;
     }
 
-    public isEntity(id: number){
+    public isEntity(id: number): boolean{
         return this.entities.has(id);
     }
 
-    public isComponent(id: number){
+    public isComponent(id: number): boolean{
         return this.components.has(id);
     }
     
@@ -180,11 +146,18 @@ export class GatesECS {
     // SYSTEMS
 
     public addSystem(system: System): System {
+        // Add
         const set = new Map<Entity, EntityData>();
         this.systems.set(system, set);
-        if (!this.phasedSystems.has(system.phase)) this.phasedSystems.set(system.phase, new Set());
+        // Add system to phase
+        if (!this.phasedSystems.has(system.phase)){
+            this.phasedSystems.set(system.phase, new Set());
+            this.sortPhases();
+        }
         this.phasedSystems.get(system.phase)!.add(system);
+        // Check for matching entities
         for (const entity of this.entities.keys()) {
+            // Don't use checkE since that checks all systems
             this.checkES(entity,this.entities.get(entity), system);
         }
         return system;
@@ -194,7 +167,16 @@ export class GatesECS {
         this.systems.delete(system);
         const sys = this.phasedSystems.get(system.phase)!;
         sys.delete(system);
-        if (sys.size == 0) this.phasedSystems.delete(system.phase);
+        if (sys.size == 0){
+            this.phasedSystems.delete(system.phase);
+            this.sortPhases();  
+        } 
+    }
+
+    private sortPhases(): void{
+        this.phasedSystems = new Map([...this.phasedSystems].sort(([a,], [b,]) => {
+            return a - b;
+        }));
     }
 
     // --
@@ -207,13 +189,55 @@ export class GatesECS {
     }
 
     private checkES(entity: Entity, data: EntityData, system: System): void {
-        const systemData = this.systems.get(system)!;
         if (hasAllComponents(data, system.componentsRequired)){
-            systemData.set(entity, data);
+            this.systems.get(system).set(entity, data);
             system.complete?.(this,entity, data);
         }else{
-            systemData.delete(entity);
+            this.systems.get(system).delete(entity);
             system.uncomplete?.(this,entity, data);
         }
+    }
+}
+
+// UTIL
+
+export class Prefab{
+    protected components: Map<ComponentClass<ComponentData>, (c: Entity) => ComponentData> = new Map();
+    protected createFn!: (eng:GatesECS,entity:Entity) => void;
+
+    addComponent<T extends ComponentData>(compClass: ComponentClass<T>, comp: (c: Entity) => T){
+        if (!this.components.has(compClass)){
+            this.components.set(compClass,comp);
+        }
+        return this;
+    }
+
+    onCreate(fn: (eng: GatesECS, entity: number) => void){
+        this.createFn = fn;
+    }
+
+    create(engine: GatesECS): Entity{
+        const entity = engine.entity();
+        this.components.forEach(c => engine.addTo(entity, engine.component(c.apply(engine, [entity]))));
+        this.createFn?.apply(this, [engine, entity]);
+        return entity;
+    }
+}
+
+// UTIL FUNCTIONS
+
+export function hasAllComponents(e: EntityData, compClasses: Set<ComponentClass<any>>){
+    const have = e.componentClasses;
+    for (const compClass of compClasses) {
+        if (!have.has(compClass)) return false;
+    }
+    return true;
+}
+
+export function * getComponentsOf<T extends ComponentData>(ecs: GatesECS, e: EntityData, compClass: ComponentClass<T>): Generator<T>{
+    let data;
+    for (const child of e.children) {
+        data = ecs.getComponentData(child, compClass);
+        if (data) yield data;
     }
 }
