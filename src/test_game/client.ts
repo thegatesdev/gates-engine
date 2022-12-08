@@ -1,11 +1,15 @@
 import { Application, Graphics, Sprite, Texture } from 'pixi.js';
+import { io } from "socket.io-client";
+
 import { ComponentClass, EntityData, GatesECS, getComponentsOf, System } from '../LIB/GatesECS';
-import { DisplayComponent, PositionComponent, tickECS, TickPhase } from './shared';
+import { DisplayComponent, TickPhase, PositionComponent } from '../LIB/GatesEngine';
+import { PORT } from './server';
 
 const APP = new Application({
         resizeTo: window,
         autoDensity: true,
     });
+const CONN = io(":"+PORT);
 const ECS = new GatesECS();
 
 document.body.appendChild(APP.view as any);
@@ -51,7 +55,7 @@ ECS.addSystem(new class extends System{
 // INIT
 ECS.init();
 APP.ticker.add(() => {
-    tickECS(ECS);
+    ECS.tick();
 }, this)
 
 const bunnyTex = Texture.from("./assets/bunny.jpg");
