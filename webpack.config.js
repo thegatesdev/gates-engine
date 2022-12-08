@@ -23,7 +23,6 @@ const exportDefaults = {
   },
   output: {
     clean: true,
-    // publicPath option is only if webpack is deployed on the client.
   },
   plugins: [
     new ForkTsCheckerWebpackPlugin(),
@@ -33,50 +32,61 @@ const exportDefaults = {
   },
 }
 
-const exportServer = {
-  name: 'server',
-  target: 'node',
-  externals: [nodeExternals()],
-  stats: {
-    errorDetails: true,
-  },
-  entry: './src/server/server.ts',
-  output: {
-    filename: 'server.js',
-    path: path.resolve(__dirname, 'dist/server'),
-  },
+function exportServer(name, ...other){
+  return merge(exportDefaults, {
+    name: name+"_server",
+    output: {
+      filename: 'server.js',
+      path: path.resolve(__dirname, 'dist/server/'+name),// Separate server from client, see below.
+    },
+    experiments: {
+      futureDefaults: true,
+    },
+    target: 'node',
+    entry: `./src/${name}/server.ts`,
+  }, ...other);
 }
 
-const exportTestGame = {
-  name: 'test_game',
-  entry: {
-    client: './src/test_game/client.ts',
-    server: './src/test_game/server.ts'
-  },
-  output: {
-    filename: '[name].js',
-    path: path.resolve(__dirname, 'dist/test_game'),
-    publicPath: "/"
-  },
-  plugins: [
-    new HtmlWebpackPlugin({
-      template: 'src/test_game/index.ejs',
-      filename: 'index.html',
-      minify: true,
-      chunks: ['client'],
-    }),
-    new CopyWebpackPlugin({
-      patterns: [
-          { from: "src/test_game/assets", to: "assets/" }
-      ]
-    }),
-  ],
-  experiments: {
-    futureDefaults: true,
-  },
+function exportClient(name, ...other){
+  return merge(exportDefaults, {
+    name: name+"_client",
+    output: {
+      filename: 'client.js',
+      path: path.resolve(__dirname, 'dist/client/'+name),// Separate client from server to server whole folder.
+      publicPath: "/"+name+"/", // Where files are served from.
+      clean: false,
+    },
+    experiments: {
+      futureDefaults: true,
+    },
+    entry: `./src/${name}/client.ts`,
+    target: 'web',
+    plugins: [
+      new HtmlWebpackPlugin({// Create html from template.
+        template: `src/${name}/index.ejs`,
+        filename: 'index.html',
+        minify: true,
+      }),
+      new CopyWebpackPlugin({// Copy assets to new folder.
+        patterns: [
+            { from: `src/${name}/assets`, to: "assets/" }
+        ]
+      }),
+    ]
+  }, ...other);
 }
 
 module.exports = [
-  merge(exportDefaults, exportServer),
-  merge(exportDefaults, exportTestGame),
+  exportServer('test_game'),
+  exportClient('test_game'),
+  exportServer('main', {
+    plugins: [
+      new CopyWebpackPlugin({
+        patterns: [
+            { from: "src/main/index.ejs", to: "./" }
+        ]
+      }),
+    ],
+    externals: [nodeExternals()],
+  }),
 ]
