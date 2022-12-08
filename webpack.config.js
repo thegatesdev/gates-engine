@@ -47,17 +47,14 @@ const exportServer = {
   },
 }
 
-const exportTestGame = {
-  name: 'test_game',
+const exportTestGameClient = {
+  name: 'test_game_client',
   target: 'web',
-  entry: {
-    client: './src/test_game/client.ts',
-    server: './src/test_game/server.ts',
-  },
+  entry: './src/test_game/client.ts',
   output: {
-    filename: '[name].js',
-    path: path.resolve(__dirname, 'dist/test_game'),
-    publicPath: "/[name]/"
+    filename: 'client.js',
+    path: path.resolve(__dirname, 'dist/test_game/client'),
+    publicPath: "/test_game/client/"
   },
   module: {
     rules: [
@@ -69,10 +66,9 @@ const exportTestGame = {
   },
   plugins: [
     new HtmlWebpackPlugin({
-      template: 'src/test_game/test_game.ejs',
-      filename: 'test_game.html',
+      template: 'src/test_game/index.ejs',
+      filename: 'index.html',
       minify: true,
-      chunks: ["client"]
     }),
   ],
   experiments: {
@@ -80,7 +76,22 @@ const exportTestGame = {
   },
 }
 
+const exportTestGameServer = {
+  name: 'test_game_server',
+  target: 'node',
+  entry: './src/test_game/server.ts',
+  output: {
+    filename: 'server.js',
+    path: path.resolve(__dirname, 'dist/test_game/server'),
+    publicPath: "/server/"
+  },
+  experiments: {
+    futureDefaults: true,
+  },
+}
+
 module.exports = [
   merge(exportDefaults, exportServer),
-  merge(exportDefaults, exportTestGame),
+  merge(exportDefaults, exportTestGameClient),
+  merge(exportDefaults, exportTestGameServer),
 ]

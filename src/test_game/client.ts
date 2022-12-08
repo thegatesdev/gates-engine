@@ -1,82 +1,65 @@
-import { Application, Container, Graphics } from 'pixi.js';
-import { ComponentClass, ComponentData, EntitySet, GatesECS, System } from '../LIB/GatesECS';
+import { Application, Graphics, Sprite, Texture } from 'pixi.js';
+import { ComponentClass, EntityData, GatesECS, getComponentsOf, System } from '../LIB/GatesECS';
+import { DisplayComponent, PositionComponent, tickECS, TickPhase } from './shared';
+// @ts-ignore
+import BunnyTexture from './assets/bunny.jpg'
 
-const APP = new Application(
-    {
+const APP = new Application({
         resizeTo: window,
         autoDensity: true,
-    }
-    );
+    });
 const ECS = new GatesECS();
 
 document.body.appendChild(APP.view as any);
 
-const enum TickPhase{
-    EARLY_UPDATE,
-    UPDATE,
-    PHYSICS,
-    PRESENTATION,
-}
-
 // COMPONENTS
-
-class DisplayComponent implements ComponentData{
-    constructor(public readonly object: Container, public readonly pos: PositionComponent){
-        APP.stage.addChild(object);
-    }
-}
-
-class PositionComponent implements ComponentData{
-    constructor(public x: number = 0, public y: number = 0) {
-    }
-}
 
 // SYSTEMS
 
 // -- Move display to position
 ECS.addSystem(new class extends System{
-    public componentsRequired: Set<ComponentClass<any>> = new Set([PositionComponent, DisplayComponent]);
+    public componentsRequired: Set<ComponentClass<any>> = new Set([DisplayComponent]);
     public phase: number = TickPhase.PRESENTATION;
-    public update(engine: GatesECS, entities: EntitySet): void {
-        let display: DisplayComponent;
-        // entities.forEach((ec) => {
-        //     ec.get(DisplayComponent).forEach(dn => {
-        //         display = engine.getComponent(dn, DisplayComponent);
-        //         if (display.object.position._x != display.pos.x || display.object.position._y != display.pos.y){
-        //             display.object.position.set(display.pos.x, display.pos.y);
-        //         }
-        //     });
-        // })
+    public update(ecs: GatesECS, entities: Map<number, EntityData>): void {
+        let pos;
+        for (const e of entities) {
+            for (const display of getComponentsOf(ecs, e[1], DisplayComponent)) {
+                pos = ecs.getComponentData(display.positionComponent, PositionComponent);
+                display.object.position.set(pos.x, pos.y);  
+            }
+        }
+    }
+    public complete(ecs: GatesECS, entity: number, data: EntityData): void {
+        for (const display of getComponentsOf(ecs, data, DisplayComponent)) {
+            APP.stage.addChild(display.object);
+        }
     }
 });
 
 ECS.addSystem(new class extends System{
     public componentsRequired: Set<ComponentClass<any>> = new Set([PositionComponent]);
     public phase: number = TickPhase.PHYSICS;
-    public update(engine: GatesECS, entities: EntitySet): void {
-        let pos: PositionComponent;
-        // entities.forEach((ec) => {
-        //     ec.get(PositionComponent).forEach(pn => {
-        //         pos = engine.getComponent(pn, PositionComponent);
-        //         pos.x++;
-        //         pos.y++;
-        //     });
-        // })
+    public update(ecs: GatesECS, entities: Map<number, EntityData>): void {
+        for (const data of entities.values()) {
+            for (const pos of getComponentsOf(ecs,data, PositionComponent)) {
+                pos.x++;
+                pos.y++;
+            }
+        }
     }
+    
 });
 
 // INIT
 ECS.init();
 APP.ticker.add(() => {
-    ECS.tick(TickPhase.EARLY_UPDATE)
-    ECS.tick(TickPhase.PHYSICS)
-    ECS.tick(TickPhase.UPDATE)
-    ECS.tick(TickPhase.PRESENTATION)
-    ECS.tickDestroy();
+    tickECS(ECS);
 }, this)
 
+const bunnyTex = Texture.from(BunnyTexture);
 
 // ---
 const player = ECS.entity();
-const playerPos = ECS.addComponent(player, new PositionComponent(50,50));
-ECS.addComponent(player, new DisplayComponent(new Graphics().beginFill(0xffff).drawRect(0,0,50,50), ECS.getComponent(playerPos)))
+const playerPos = ECS.addComponent(player, new PositionComponent(0,0));
+ECS.addComponent(player, new DisplayComponent(new Sprite(bunnyTex), playerPos));
+ECS.addComponent(player, new DisplayComponent(new Graphics().beginFill(0xffff).drawRect(50,50,140,20), playerPos))
