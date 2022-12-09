@@ -12,7 +12,7 @@ export abstract class System{
     public enabled: boolean = true;
     public abstract componentsRequired: Set<ComponentClass<any>>;
     public abstract phase: number;
-    public abstract update(ecs: GatesECS, entities: Map<Entity, EntityData>): void
+    public abstract update(ecs: GatesECS, entities: Map<Entity, EntityData>, deltaTime: number): void
     public init?(ecs: GatesECS): void;
     public complete?(ecs: GatesECS, entity: Entity, data: EntityData): void;
     public uncomplete?(ecs: GatesECS, entity: Entity, data: EntityData): void;
@@ -29,7 +29,7 @@ export class GatesECS {
 
     private isInitialized = false;
 
-    private entities = new Map<Entity, EntityData>();
+    private entities = new Map<Entity, EntityData | null>();
     private components = new Map<Entity, ComponentData>();
 
     private systems = new Map<System, Map<Entity, EntityData>>();
@@ -40,11 +40,11 @@ export class GatesECS {
     private _nextEntityID = 0;
     private entitiesToDestroy: Entity[] = [];
 
-    public tick(): void{
+    public tick(deltaTime: number = 0): void{
         for (const systems of this.phasedSystems.values()) {
             for (let system of systems) {
                 if (system.enabled){
-                    system.update(this, this.systems.get(system));
+                    system.update(this, this.systems.get(system), deltaTime);
                 }
             }
         }
@@ -68,10 +68,9 @@ export class GatesECS {
 
     // ENTITIES
 
-    public entity(entityID: number = this._nextEntityID++): Entity {
-        if (this.entities.has(entityID)) throw new Error("Entity ID "+entityID+" is already in use");
-        this.entities.set(entityID, new EntityData());
-        return entityID;
+    public entity(): Entity {
+        this.entities.set(this._nextEntityID, null);
+        return this._nextEntityID++;
     }
 
     private remove(entity: Entity): void {
@@ -96,8 +95,18 @@ export class GatesECS {
         return component;
     }
 
-    public getEntityData(entity: Entity): EntityData | undefined{
+    public getEntityData(entity: Entity): EntityData | undefined | null{
         return this.entities.get(entity);
+    }
+
+    private getOrCreateEntityData(entity: Entity): EntityData | undefined{
+        let data = this.entities.get(entity);
+        if (data === undefined) return undefined;
+        if (data === null){
+            data = new EntityData();
+            this.entities.set(entity, data);
+        }
+        return data;
     }
 
     public getComponentData<T extends ComponentData>(component: Entity, _compClass?: ComponentClass<T>): T | undefined{
@@ -124,7 +133,7 @@ export class GatesECS {
     }
     
     public addTo(onto: Entity, ...entities: Entity[]): Entity {
-        const data = this.entities.get(onto);
+        const data = this.getOrCreateEntityData(onto);
         for (const e of entities) {
             data.children.add(e);
             if (this.isComponent(e)) data.componentClasses.add(this.getComponentData(e).constructor)
@@ -135,6 +144,7 @@ export class GatesECS {
 
     public removeFrom(from: Entity, ...entities: Entity[]): Entity{
         const data = this.entities.get(from);
+        if (data === null) return from;
         for (const e of entities) {
             data.children.delete(e);
             if (this.isComponent(e)) data.componentClasses.delete(this.getComponentData(e).constructor)
@@ -189,7 +199,7 @@ export class GatesECS {
     }
 
     private checkES(entity: Entity, data: EntityData, system: System): void {
-        if (hasAllComponents(data, system.componentsRequired)){
+        if (data !== null && hasAllComponents(data, system.componentsRequired)){
             this.systems.get(system).set(entity, data);
             system.complete?.(this,entity, data);
         }else{
