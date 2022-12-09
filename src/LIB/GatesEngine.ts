@@ -1,14 +1,19 @@
-import { Application, Container } from "pixi.js";
-import { ComponentClass, ComponentData, Entity, EntityData, GatesECS, getComponentsOf, System } from "./GatesECS";
+import { Application, Container, Ticker, TickerCallback } from "pixi.js";
+import type { ComponentClass, ComponentData, Entity, EntityData } from "./GatesECS";
+import { System, GatesECS, getComponentsOf } from "./GatesECS";
 
 // COMPONENTS
 
 export class PositionComponent implements ComponentData{
+    destroy?(): void;
     constructor(public x: number = 0, public y: number = 0){
     }
 }
 
 export class DisplayComponent implements ComponentData{
+    destroy(): void {
+        this.container.destroy();
+    }
     constructor(public readonly container: Container, public readonly positionComponent: Entity){
     }
 }
@@ -41,15 +46,20 @@ export const enum TickPhase{
 export class Scene{
     public readonly ECS: GatesECS = new GatesECS();
 
-    constructor(public readonly APP: Application = new Application({
-        resizeTo: window,
-        autoDensity: true,
-    })){}
+    private tickerCallback: TickerCallback<any> = (d) => {
+        this.ECS.tick(d);
+    };
+
+    constructor(public readonly APP: Application){
+        
+    }
 
     public init(): void{
         this.ECS.init();
-        this.APP.ticker.add((d) => {
-            this.ECS.tick(d);
-        });
+        this.APP.ticker.add(this.tickerCallback);
+    }
+
+    public destroy(): void{
+        this.APP.ticker.remove(this.tickerCallback);
     }
 }

@@ -2,9 +2,11 @@
 
 export type Entity = number
 
-export type ComponentData = any;
+export interface ComponentData{
+    destroy?(): void;
+}
 
-export type ComponentClass<T extends ComponentData> = new (...args: any[]) => T
+export type ComponentClass<T extends ComponentData> = new (...args: any[]) => T;
 
 // BASE
 
@@ -12,7 +14,7 @@ export abstract class System{
     public enabled: boolean = true;
     public abstract componentsRequired: Set<ComponentClass<any>>;
     public abstract phase: number;
-    public abstract update(ecs: GatesECS, entities: Map<Entity, EntityData>, deltaTime: number): void
+    public abstract update(ecs: GatesECS, entities: Map<Entity, EntityData>, deltaTime: number): void;
     public init?(ecs: GatesECS): void;
     public complete?(ecs: GatesECS, entity: Entity, data: EntityData): void;
     public uncomplete?(ecs: GatesECS, entity: Entity, data: EntityData): void;
@@ -20,7 +22,7 @@ export abstract class System{
 
 export class EntityData{
     public children: Set<Entity> = new Set();
-    public componentClasses: Set<Function> = new Set();
+    public componentClasses: Set<ComponentClass<any>> = new Set();
 }
 
 // ENGINE
@@ -64,6 +66,19 @@ export class GatesECS {
             sys.init?.(this);
         }
         this.isInitialized = true;
+    }
+
+    public reset(): {componentsDestroyed: number}{
+        const result = {
+            componentsDestroyed: 0
+        }
+        for (const comp of this.components.values()) {
+            if (comp.destroy){
+                comp.destroy();
+                result.componentsDestroyed++;
+            }
+        }
+        return result;
     }
 
     // ENTITIES
@@ -112,7 +127,7 @@ export class GatesECS {
     public getComponentData<T extends ComponentData>(component: Entity, _compClass?: ComponentClass<T>): T | undefined{
         const data = this.components.get(component);
         if (!_compClass || data.constructor == _compClass){
-            return data;
+            return data as T;
         }
         return undefined;
     }
@@ -136,7 +151,7 @@ export class GatesECS {
         const data = this.getOrCreateEntityData(onto);
         for (const e of entities) {
             data.children.add(e);
-            if (this.isComponent(e)) data.componentClasses.add(this.getComponentData(e).constructor)
+            if (this.isComponent(e)) data.componentClasses.add(this.getComponentData(e).constructor as ComponentClass<any>)
         }
         this.checkE(onto);
         return onto;
@@ -147,7 +162,7 @@ export class GatesECS {
         if (data === null) return from;
         for (const e of entities) {
             data.children.delete(e);
-            if (this.isComponent(e)) data.componentClasses.delete(this.getComponentData(e).constructor)
+            if (this.isComponent(e)) data.componentClasses.delete(this.getComponentData(e).constructor as ComponentClass<any>)
         }
         this.checkE(from);
         return from;
