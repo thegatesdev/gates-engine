@@ -1,5 +1,5 @@
-import { Application, Assets, Container } from "pixi.js";
-import { ComponentData, Entity, GatesECS } from "./GatesECS";
+import { Application, Container } from "pixi.js";
+import { ComponentClass, ComponentData, Entity, EntityData, GatesECS, getComponentsOf, System } from "./GatesECS";
 
 // COMPONENTS
 
@@ -9,9 +9,25 @@ export class PositionComponent implements ComponentData{
 }
 
 export class DisplayComponent implements ComponentData{
-    constructor(public readonly object: Container, public readonly positionComponent: Entity){
+    constructor(public readonly container: Container, public readonly positionComponent: Entity){
     }
 }
+
+// SYSTEMS
+
+export const DisplayToPositionSystem = new class extends System{
+    public componentsRequired: Set<ComponentClass<any>> = new Set([DisplayComponent]);
+    public phase: number = TickPhase.PRESENTATION;
+    public update(ecs: GatesECS, entities: Map<number, EntityData>): void {
+        let pos;
+        for (const e of entities) {
+            for (const display of getComponentsOf(ecs, e[1], DisplayComponent)) {
+                pos = ecs.getComponentData(display.positionComponent, PositionComponent);
+                display.container.position.set(pos.x, pos.y);  
+            }
+        }
+    }
+};
 
 // UTIL
 
@@ -30,17 +46,10 @@ export class Scene{
         autoDensity: true,
     })){}
 
-    private resources: string[] = [];
-
-    public addResources(...urls: string[]){
-        this.resources.push(...urls);
-    }
-
-    public preLoad(): void{
-        Assets.backgroundLoad(this.resources);
-    }
-
     public init(): void{
-
+        this.ECS.init();
+        this.APP.ticker.add((d) => {
+            this.ECS.tick(d);
+        });
     }
 }
