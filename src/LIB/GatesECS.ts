@@ -1,38 +1,63 @@
-// TYPES
+// @ts-strict
 
+// TYPES
 export type Entity = number
 
-export interface ComponentData{
-    destroy?(): void;
-}
+export type Component<D> = {
+    type: ComponentType<D>;
+    data: D;
+};
 
-export type ComponentClass<T extends ComponentData> = new (...args: any[]) => T;
+export class ComponentType<D>{
+    constructor(public readonly id: string) {
+    }
+    public create(data: D): Component<D> {
+        return { type: this, data: data }
+    }
+    public destroy?(data: D): void;
+}
 
 // BASE
 
-export abstract class System{
-    public enabled: boolean = true;
-    public abstract componentsRequired: Set<ComponentClass<any>>;
+export abstract class System {
+    private enabled: boolean = false;
+    public abstract componentsRequired: Set<ComponentType<unknown>>;
     public abstract phase: number;
-    public abstract update(ecs: GatesECS, entities: Map<Entity, EntityData>, deltaTime: number): void;
-    public init?(ecs: GatesECS): void;
-    public complete?(ecs: GatesECS, entity: Entity, data: EntityData): void;
-    public uncomplete?(ecs: GatesECS, entity: Entity, data: EntityData): void;
+
+    public abstract onUpdate(ecs: GatesECS, entities: Map<Entity, EntityData>, deltaTime: number): void;
+    public onEnable?(): void;
+    public onDisable?(): void;
+
+    public enable(): void {
+        if (this.enabled) return;
+        this.enabled = true;
+        this.onEnable?.();
+    }
+
+    public disable(): void {
+        if (!this.enabled) return;
+        this.enabled = false;
+        this.onDisable?.();
+    }
+
+    get isEnabled(): boolean {
+        return this.enabled;
+    }
+
+    public onComplete?(ecs: GatesECS, entity: Entity, data: EntityData): void;
+    public onUncomplete?(ecs: GatesECS, entity: Entity, data: EntityData): void;
 }
 
-export class EntityData{
-    public children: Set<Entity> = new Set();
-    public componentClasses: Set<ComponentClass<any>> = new Set();
+export class EntityData {
+    public readonly children: Set<Entity> = new Set();
+    public readonly confirmedComponentTypes: Set<ComponentType<unknown>> = new Set();
 }
 
 // ENGINE
 
 export class GatesECS {
-
-    private isInitialized = false;
-
     private entities = new Map<Entity, EntityData | null>();
-    private components = new Map<Entity, ComponentData>();
+    private components = new Map<Entity, Component<unknown>>();
 
     private systems = new Map<System, Map<Entity, EntityData>>();
     private phasedSystems = new Map<number, Set<System>>();
@@ -42,127 +67,123 @@ export class GatesECS {
     private _nextEntityID = 0;
     private entitiesToDestroy: Entity[] = [];
 
-    public tick(deltaTime: number = 0): void{
+    public doTick = false;
+    // --
+
+    public tick(deltaTime: number = 1): void {
+        if (!this.doTick) return;
         for (const systems of this.phasedSystems.values()) {
             for (let system of systems) {
-                if (system.enabled){
-                    system.update(this, this.systems.get(system), deltaTime);
+                if (system.isEnabled) {
+                    system.onUpdate(this, this.systems.get(system)!, deltaTime);
                 }
             }
         }
         this.tickDestroy();
     }
 
-    public tickDestroy(): void {
+    private tickDestroy(): void {
         const len = this.entitiesToDestroy.length;
         for (let i = 0; i < len; i++) {
-            this.remove(this.entitiesToDestroy.pop()!);
+            this.destroy(this.entitiesToDestroy.pop()!);
         }
-    }
-
-    public init(): void{
-        if (this.isInitialized) throw new Error("already initialized");
-        for (const sys of this.systems.keys()) {
-            sys.init?.(this);
-        }
-        this.isInitialized = true;
-    }
-
-    public reset(): {componentsDestroyed: number}{
-        const result = {
-            componentsDestroyed: 0
-        }
-        for (const comp of this.components.values()) {
-            if (comp.destroy){
-                comp.destroy();
-                result.componentsDestroyed++;
-            }
-        }
-        return result;
     }
 
     // ENTITIES
 
     public entity(): Entity {
-        this.entities.set(this._nextEntityID, null);
-        return this._nextEntityID++;
+        return this.initEntity(this._nextEntityID++, null);
     }
 
-    private remove(entity: Entity): void {
+    protected initEntity(entity: Entity, data: EntityData | null): Entity {
+        this.entities.set(entity, data);
+        return entity;
+    }
+
+    protected destroy(entity: Entity): void {
         for (const systemEntities of this.systems.values()) {
             systemEntities.delete(entity);
         }
         this.entities.delete(entity);
     }
-    
-    public destroy(entity: Entity): void {
+
+    public remove(entity: Entity): void {
         this.entitiesToDestroy.push(entity);
     }
-    
-    public countEntities(): number{
+
+    public countEntities(): number {
         return this.entities.size - this.entitiesToDestroy.length;
     }
 
 
-    public component(data: ComponentData): Entity{
+    public component(data: Component<unknown>): Entity {
         const component = this.entity();
         this.components.set(component, data);
         return component;
     }
 
-    public getEntityData(entity: Entity): EntityData | undefined | null{
+    public getEntityData(entity: Entity): EntityData | undefined | null {
         return this.entities.get(entity);
     }
 
-    private getOrCreateEntityData(entity: Entity): EntityData | undefined{
+    protected getOrCreateEntityData(entity: Entity): EntityData {
         let data = this.entities.get(entity);
-        if (data === undefined) return undefined;
-        if (data === null){
+        if (data === undefined) throw new Error("Cannot add to non existant entity");
+        if (data === null) {
             data = new EntityData();
             this.entities.set(entity, data);
         }
         return data;
     }
 
-    public getComponentData<T extends ComponentData>(component: Entity, _compClass?: ComponentClass<T>): T | undefined{
+    public getComponentData<T>(component: Entity, type?: ComponentType<T>): T | undefined {
         const data = this.components.get(component);
-        if (!_compClass || data.constructor == _compClass){
-            return data as T;
+        if (data !== undefined && (!type || data.type == type)) {
+            return data.data as T;
         }
         return undefined;
     }
 
-    
-    public addComponent(onto: Entity, data: ComponentData): Entity{
+    private getComponent<T>(component: Entity, type?: ComponentType<T>): Component<T> | undefined {
+        const data = this.components.get(component);
+        if (data !== undefined && (!type || data.type == type)) {
+            return data as Component<T>;
+        }
+        return undefined;
+    }
+
+
+    public addComponent(onto: Entity, data: Component<unknown>): Entity {
         const comp = this.component(data);
         this.addTo(onto, comp);
         return comp;
     }
 
-    public isEntity(id: number): boolean{
+    public isEntity(id: number): boolean {
         return this.entities.has(id);
     }
 
-    public isComponent(id: number): boolean{
+    public isComponent(id: number): boolean {
         return this.components.has(id);
     }
-    
+
     public addTo(onto: Entity, ...entities: Entity[]): Entity {
         const data = this.getOrCreateEntityData(onto);
         for (const e of entities) {
             data.children.add(e);
-            if (this.isComponent(e)) data.componentClasses.add(this.getComponentData(e).constructor as ComponentClass<any>)
+            if (this.isComponent(e)) data.confirmedComponentTypes.add(this.getComponent(e)!.type)
         }
         this.checkE(onto);
         return onto;
     }
 
-    public removeFrom(from: Entity, ...entities: Entity[]): Entity{
+    public removeFrom(from: Entity, ...entities: Entity[]): Entity {
         const data = this.entities.get(from);
-        if (data === null) return from;
-        for (const e of entities) {
-            data.children.delete(e);
-            if (this.isComponent(e)) data.componentClasses.delete(this.getComponentData(e).constructor as ComponentClass<any>)
+        if (data !== null && data !== undefined) {
+            for (const e of entities) {
+                data.children.delete(e);
+                if (this.isComponent(e)) data.confirmedComponentTypes.delete(this.getComponent(e)!.type);
+            }
         }
         this.checkE(from);
         return from;
@@ -175,15 +196,16 @@ export class GatesECS {
         const set = new Map<Entity, EntityData>();
         this.systems.set(system, set);
         // Add system to phase
-        if (!this.phasedSystems.has(system.phase)){
+        if (!this.phasedSystems.has(system.phase)) {
             this.phasedSystems.set(system.phase, new Set());
             this.sortPhases();
         }
         this.phasedSystems.get(system.phase)!.add(system);
         // Check for matching entities
-        for (const entity of this.entities.keys()) {
+        for (const [entity, data] of this.entities) {
             // Don't use checkE since that checks all systems
-            this.checkES(entity,this.entities.get(entity), system);
+            if (data === null) continue;
+            this.checkES(entity, data, system);
         }
         return system;
     }
@@ -192,13 +214,13 @@ export class GatesECS {
         this.systems.delete(system);
         const sys = this.phasedSystems.get(system.phase)!;
         sys.delete(system);
-        if (sys.size == 0){
+        if (sys.size == 0) {
             this.phasedSystems.delete(system.phase);
-            this.sortPhases();  
-        } 
+            this.sortPhases();
+        }
     }
 
-    private sortPhases(): void{
+    protected sortPhases(): void {
         this.phasedSystems = new Map([...this.phasedSystems].sort(([a,], [b,]) => {
             return a - b;
         }));
@@ -206,44 +228,44 @@ export class GatesECS {
 
     // --
 
-    private checkE(entity: Entity): void {
+    protected checkE(entity: Entity): void {
         const data = this.getEntityData(entity);
+        if (!data) return;
         for (const system of this.systems.keys()) {
-            this.checkES(entity,data, system);
+            this.checkES(entity, data, system);
         }
     }
 
-    private checkES(entity: Entity, data: EntityData, system: System): void {
-        if (data !== null && hasAllComponents(data, system.componentsRequired)){
-            this.systems.get(system).set(entity, data);
-            system.complete?.(this,entity, data);
-        }else{
-            this.systems.get(system).delete(entity);
-            system.uncomplete?.(this,entity, data);
+    protected checkES(entity: Entity, data: EntityData, system: System): void {
+        const sysData = this.systems.get(system);
+        if (!sysData) return;
+        if (data !== null && hasComponentsOf(data, system.componentsRequired)) {
+            sysData.set(entity, data);
+            system.onComplete?.(this, entity, data);
+        } else {
+            sysData.delete(entity);
+            system.onUncomplete?.(this, entity, data);
         }
     }
 }
 
 // UTIL
 
-export class Prefab{
-    protected components: Map<ComponentClass<ComponentData>, (c: Entity) => ComponentData> = new Map();
-    protected createFn!: (eng:GatesECS,entity:Entity) => void;
+export class Prefab {
+    protected components: (() => Component<unknown>)[] = [];
+    protected createFn!: (eng: GatesECS, entity: Entity) => void;
 
-    addComponent<T extends ComponentData>(compClass: ComponentClass<T>, comp: (c: Entity) => T){
-        if (!this.components.has(compClass)){
-            this.components.set(compClass,comp);
-        }
-        return this;
+    public addComponent(callback: () => Component<unknown>) {
+        this.components.push(callback);
     }
 
-    onCreate(fn: (eng: GatesECS, entity: number) => void){
+    onCreate(fn: (eng: GatesECS, entity: number) => void) {
         this.createFn = fn;
     }
 
-    create(engine: GatesECS): Entity{
+    create(engine: GatesECS): Entity {
         const entity = engine.entity();
-        this.components.forEach(c => engine.addTo(entity, engine.component(c.apply(engine, [entity]))));
+        this.components.forEach(callback => engine.component(callback()));
         this.createFn?.apply(this, [engine, entity]);
         return entity;
     }
@@ -251,18 +273,18 @@ export class Prefab{
 
 // UTIL FUNCTIONS
 
-export function hasAllComponents(e: EntityData, compClasses: Set<ComponentClass<any>>){
-    const have = e.componentClasses;
-    for (const compClass of compClasses) {
-        if (!have.has(compClass)) return false;
+export function hasComponentsOf(e: EntityData, types: Set<ComponentType<unknown>>) {
+    const have = e.confirmedComponentTypes;
+    for (const type of types) {
+        if (!have.has(type)) { return false; }
     }
     return true;
 }
 
-export function * getComponentsOf<T extends ComponentData>(ecs: GatesECS, e: EntityData, compClass: ComponentClass<T>): Generator<T>{
+export function* getComponentsOf<D>(ecs: GatesECS, e: EntityData, type: ComponentType<D>): Generator<D> {
     let data;
     for (const child of e.children) {
-        data = ecs.getComponentData(child, compClass);
+        data = ecs.getComponentData(child, type);
         if (data) yield data;
     }
 }
