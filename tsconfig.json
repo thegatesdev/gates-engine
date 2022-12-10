@@ -1,13 +1,16 @@
 {
-    "compilerOptions": {
-      "outDir": "./dist/",
-      "noImplicitAny": true,
-      "module": "ES2022",
-      "sourceMap": true,
-      "target": "ES2022",
-      "allowJs": true,
-      "checkJs": true,
-      "moduleResolution": "node"
-    },
-    "include": ["src/**/*"]
+  "compilerOptions": {
+    "outDir": "./dist/",
+    "noImplicitAny": true,
+    "module": "ES2022",
+    "sourceMap": true,
+    "target": "ES2022",
+    "allowJs": true,
+    "checkJs": true,
+    "moduleResolution": "node",
+    "strict": true,
+  },
+  "include": [
+    "src/**/*"
+  ]
 }
