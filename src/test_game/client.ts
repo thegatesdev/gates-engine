@@ -1,5 +1,5 @@
 import { Application } from "pixi.js";
-import { Scene } from "../LIB/GatesEngine";
+import { ComponentType, GatesECS } from "../LIB/GatesECS";
 
 
 const APP = new Application({
@@ -7,5 +7,8 @@ const APP = new Application({
     autoDensity: true,
 });
 
+const ECS = new GatesECS();
+const PositionComponent = new ComponentType<{x:number, y:number}>("position");
 
-const SCENE1 = new Scene(APP);
+const entity1 = ECS.entity();
+ECS.addComponent(entity1, PositionComponent.create({x:3,y:4}));
