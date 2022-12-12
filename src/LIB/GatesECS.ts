@@ -4,7 +4,7 @@
 export type Entity = number
 
 export type Component<D> = {
-    type: ComponentType<D>;
+    type: string;
     data: D;
 };
 
@@ -12,7 +12,7 @@ export class ComponentType<D>{
     constructor(public readonly id: string) {
     }
     public create(data: D): Component<D> {
-        return { type: this, data: data }
+        return { type: this.id, data: data }
     }
     public destroy?(data: D): void;
 }
@@ -50,7 +50,7 @@ export abstract class System {
 
 export class EntityData {
     public readonly children: Set<Entity> = new Set();
-    public readonly confirmedComponentTypes: Set<ComponentType<unknown>> = new Set();
+    public readonly confirmedComponentTypes: Set<string> = new Set();
 }
 
 // ENGINE
@@ -83,7 +83,7 @@ export class GatesECS {
         this.tickDestroy();
     }
 
-    public init(): void{
+    public init(): void {
         if (this._isInitialized) throw new Error("Already initalized!");
         this._isInitialized = true;
         this.entities = new Map();
@@ -97,7 +97,7 @@ export class GatesECS {
         }
     }
 
-    public cloneData(): {entities: Map<Entity, EntityData | null>, components: Map<Entity, Component<unknown>>}{
+    public cloneData(): { entities: Map<Entity, EntityData | null>, components: Map<Entity, Component<unknown>> } {
         return {
             entities: new Map(this.entities),
             components: new Map(this.components)
@@ -153,7 +153,7 @@ export class GatesECS {
 
     public getComponentData<T>(component: Entity, type?: ComponentType<T>): T | undefined {
         const data = this.components.get(component);
-        if (data !== undefined && (!type || data.type == type)) {
+        if (data !== undefined && (!type || data.type == type.id)) {
             return data.data as T;
         }
         return undefined;
@@ -161,7 +161,7 @@ export class GatesECS {
 
     protected getComponent<T>(component: Entity, type?: ComponentType<T>): Component<T> | undefined {
         const data = this.components.get(component);
-        if (data !== undefined && (!type || data.type == type)) {
+        if (data !== undefined && (!type || data.type == type.id)) {
             return data as Component<T>;
         }
         return undefined;
@@ -282,7 +282,7 @@ export class Prefab {
 export function hasComponentsOf(e: EntityData, types: Set<ComponentType<unknown>>) {
     const have = e.confirmedComponentTypes;
     for (const type of types) {
-        if (!have.has(type)) { return false; }
+        if (!have.has(type.id)) { return false; }
     }
     return true;
 }
