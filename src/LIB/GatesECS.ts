@@ -56,11 +56,12 @@ export class EntityData {
 // ENGINE
 
 export class GatesECS {
-    private entities = new Map<Entity, EntityData | null>();
-    private components = new Map<Entity, Component<unknown>>();
+    protected _isInitialized = false;
+    protected entities!: Map<Entity, EntityData | null>;
+    protected components!: Map<Entity, Component<unknown>>;
 
-    private systems = new Map<System, Map<Entity, EntityData>>();
-    private phasedSystems = new Map<number, Set<System>>();
+    protected systems = new Map<System, Map<Entity, EntityData>>();
+    protected phasedSystems = new Map<number, Set<System>>();
 
     // --
 
@@ -82,10 +83,24 @@ export class GatesECS {
         this.tickDestroy();
     }
 
+    public init(): void{
+        if (this._isInitialized) throw new Error("Already initalized!");
+        this._isInitialized = true;
+        this.entities = new Map();
+        this.components = new Map();
+    }
+
     private tickDestroy(): void {
         const len = this.entitiesToDestroy.length;
         for (let i = 0; i < len; i++) {
             this.destroy(this.entitiesToDestroy.pop()!);
+        }
+    }
+
+    public cloneData(): {entities: Map<Entity, EntityData | null>, components: Map<Entity, Component<unknown>>}{
+        return {
+            entities: new Map(this.entities),
+            components: new Map(this.components)
         }
     }
 
@@ -144,7 +159,7 @@ export class GatesECS {
         return undefined;
     }
 
-    private getComponent<T>(component: Entity, type?: ComponentType<T>): Component<T> | undefined {
+    protected getComponent<T>(component: Entity, type?: ComponentType<T>): Component<T> | undefined {
         const data = this.components.get(component);
         if (data !== undefined && (!type || data.type == type)) {
             return data as Component<T>;
@@ -192,6 +207,7 @@ export class GatesECS {
     // SYSTEMS
 
     public addSystem(system: System): System {
+        if (this._isInitialized) throw new Error("Already initalized");
         // Add
         const set = new Map<Entity, EntityData>();
         this.systems.set(system, set);
@@ -208,16 +224,6 @@ export class GatesECS {
             this.checkES(entity, data, system);
         }
         return system;
-    }
-
-    public removeSystem(system: System): void {
-        this.systems.delete(system);
-        const sys = this.phasedSystems.get(system.phase)!;
-        sys.delete(system);
-        if (sys.size == 0) {
-            this.phasedSystems.delete(system.phase);
-            this.sortPhases();
-        }
     }
 
     protected sortPhases(): void {
