@@ -4,7 +4,7 @@
 export type Entity = number
 
 export type Component<D> = {
-    type: string;
+    type: ComponentType<D>;
     data: D;
 };
 
@@ -12,7 +12,7 @@ export class ComponentType<D>{
     constructor(public readonly id: string) {
     }
     public create(data: D): Component<D> {
-        return { type: this.id, data: data }
+        return { type: this, data: data }
     }
     public destroy?(data: D): void;
 }
@@ -57,8 +57,8 @@ export class EntityData {
 
 export class GatesECS {
     protected _isInitialized = false;
-    protected entities!: Map<Entity, EntityData | null>;
-    protected components!: Map<Entity, Component<unknown>>;
+    protected entities: Map<Entity, EntityData | null> | null = null;
+    protected components: Map<Entity, Component<unknown>> | null = null;
 
     protected systems = new Map<System, Map<Entity, EntityData>>();
     protected phasedSystems = new Map<number, Set<System>>();
@@ -90,6 +90,15 @@ export class GatesECS {
         this.components = new Map();
     }
 
+    public reset(): void {
+        this.entities = null;
+        this.components = null;
+        for (let [, val] of this.systems) {
+            val.clear();
+        }
+        this._isInitialized = false;
+    }
+
     private tickDestroy(): void {
         const len = this.entitiesToDestroy.length;
         for (let i = 0; i < len; i++) {
@@ -97,29 +106,32 @@ export class GatesECS {
         }
     }
 
-    public cloneData(): { entities: Map<Entity, EntityData | null>, components: Map<Entity, Component<unknown>> } {
-        return {
-            entities: new Map(this.entities),
-            components: new Map(this.components)
-        }
-    }
-
     // ENTITIES
 
     public entity(): Entity {
-        return this.initEntity(this._nextEntityID++, null);
+        return this.initEntity(this._nextEntityID++);
     }
 
-    protected initEntity(entity: Entity, data: EntityData | null): Entity {
-        this.entities.set(entity, data);
+    protected initEntity(entity: Entity): Entity {
+        this.entities!.set(entity, null);
         return entity;
     }
+
+    public component(data: Component<unknown>): Entity {
+        return this.initComponent(this.entity(), data);
+    }
+
+    protected initComponent(entity: Entity, data: Component<unknown>): Entity {
+        this.components!.set(entity, data);
+        return entity;
+    }
+
 
     protected destroy(entity: Entity): void {
         for (const systemEntities of this.systems.values()) {
             systemEntities.delete(entity);
         }
-        this.entities.delete(entity);
+        this.entities!.delete(entity);
     }
 
     public remove(entity: Entity): void {
@@ -127,41 +139,36 @@ export class GatesECS {
     }
 
     public countEntities(): number {
+        if (this.entities === null) return 0;
         return this.entities.size - this.entitiesToDestroy.length;
     }
 
-
-    public component(data: Component<unknown>): Entity {
-        const component = this.entity();
-        this.components.set(component, data);
-        return component;
-    }
-
-    public getEntityData(entity: Entity): EntityData | undefined | null {
+    private getEntityData(entity: Entity): EntityData | undefined | null {
+        if (this.entities === null) return null;
         return this.entities.get(entity);
     }
 
     protected getOrCreateEntityData(entity: Entity): EntityData {
-        let data = this.entities.get(entity);
+        let data = this.entities!.get(entity);
         if (data === undefined) throw new Error("Cannot add to non existant entity");
         if (data === null) {
             data = new EntityData();
-            this.entities.set(entity, data);
+            this.entities!.set(entity, data);
         }
         return data;
     }
 
     public getComponentData<T>(component: Entity, type?: ComponentType<T>): T | undefined {
-        const data = this.components.get(component);
-        if (data !== undefined && (!type || data.type == type.id)) {
+        const data = this.components!.get(component);
+        if (data !== undefined && (!type || data.type == type)) {
             return data.data as T;
         }
         return undefined;
     }
 
     protected getComponent<T>(component: Entity, type?: ComponentType<T>): Component<T> | undefined {
-        const data = this.components.get(component);
-        if (data !== undefined && (!type || data.type == type.id)) {
+        const data = this.components!.get(component);
+        if (data !== undefined && (!type || data.type == type)) {
             return data as Component<T>;
         }
         return undefined;
@@ -175,33 +182,42 @@ export class GatesECS {
     }
 
     public isEntity(id: number): boolean {
-        return this.entities.has(id);
+        return this.entities!.has(id);
     }
 
     public isComponent(id: number): boolean {
-        return this.components.has(id);
+        return this.components!.has(id);
     }
 
     public addTo(onto: Entity, ...entities: Entity[]): Entity {
         const data = this.getOrCreateEntityData(onto);
         for (const e of entities) {
             data.children.add(e);
-            if (this.isComponent(e)) data.confirmedComponentTypes.add(this.getComponent(e)!.type)
+            if (this.isComponent(e)) data.confirmedComponentTypes.add(this.getComponent(e)!.type.id)
         }
         this.checkE(onto);
         return onto;
     }
 
     public removeFrom(from: Entity, ...entities: Entity[]): Entity {
-        const data = this.entities.get(from);
+        const data = this.getEntityData(from);
         if (data !== null && data !== undefined) {
             for (const e of entities) {
                 data.children.delete(e);
-                if (this.isComponent(e)) data.confirmedComponentTypes.delete(this.getComponent(e)!.type);
+                if (this.isComponent(e)) data.confirmedComponentTypes.delete(this.getComponent(e)!.type.id);
             }
         }
         this.checkE(from);
         return from;
+    }
+
+    public hasChildren(from: Entity, ...children: Entity[]): boolean {
+        const data = this.getEntityData(from);
+        if (data === null || data === undefined) return false;
+        for (let en of children) {
+            if (!data.children.has(en)) return false;
+        }
+        return true;
     }
 
     // SYSTEMS
@@ -218,7 +234,7 @@ export class GatesECS {
         }
         this.phasedSystems.get(system.phase)!.add(system);
         // Check for matching entities
-        for (const [entity, data] of this.entities) {
+        for (const [entity, data] of this.entities!) {
             // Don't use checkE since that checks all systems
             if (data === null) continue;
             this.checkES(entity, data, system);
