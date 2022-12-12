@@ -1,4 +1,3 @@
-import { Application } from "pixi.js";
 import { ComponentType, GatesECS } from "./GatesECS";
 
 export const enum TickPhase {
@@ -9,26 +8,82 @@ export const enum TickPhase {
 }
 
 export type SceneData = {
-    entities: {[key: number]: number[]}
-    components: {[key: number]: [string, unknown]}
+    // ID + CHILDREN
+    entities: [number, number[] | null][]
+    // ID + TYPE + DATA
+    components: [number, string, unknown][]
 }
 
-export class GatesEngine {
-    private readonly scenes: Map<string, GatesECS> = new Map();
-    private readonly componentTypes: Map<String, ComponentType<unknown>> = new Map();
+function optimizeSceneData(data: SceneData): SceneData {
+    data.components.sort((a, b) => {
+        return a[1].localeCompare(b[1]);
+    })
+    return data;
+}
 
-    public addComponentType<D extends ComponentType<unknown>>(type: D): D{
-        if (this.componentTypes.has(type.id)) throw new Error("Type already exists");
-        this.componentTypes.set(type.id, type);
+export class Scene extends GatesECS {
+    private _savedState: SceneData | null = null;
+
+    public load(data: SceneData): void {
+        if (this._isInitialized) throw new Error("Already initalized");
+        this._savedState = data;
+        for (let [entity, type, compData] of data.components) {
+            this.initComponent(entity, ComponentTypes.getOrThrow(type).create(compData))
+        }
+        for (let [entity, children] of data.entities) {
+            this.initEntity(entity);
+            if (children !== null)
+                this.addTo(entity, ...children);
+        }
+    }
+
+    public save(): SceneData {
+        if (!this._isInitialized) throw new Error("Not initalized");
+        const data: SceneData = {
+            entities: [] = [],
+            components: [] = []
+        }
+        for (let [entity, entityData] of this.entities!) {
+            data.entities.push([entity, [...entityData!.children]]);
+        }
+        for (let [entity, component] of this.components!) {
+            data.components.push([entity, component.type.id, component.data]);
+        }
+        this._savedState = optimizeSceneData(data);
+        return this._savedState!;
+    }
+
+    public revert(): void {
+        if (this._savedState === null) throw new Error("Cannot revert to empty state");
+        this.reset();
+        this.load(this._savedState);
+    }
+}
+
+export const ComponentTypes = new class {
+    private readonly types: Map<string, ComponentType<unknown>> = new Map();
+
+    // Cache
+    private prevId: string | undefined = undefined;
+    private prevType: ComponentType<unknown> | undefined = undefined;
+
+    public add<T extends ComponentType<unknown>>(type: T): T {
+        if (this.types.has(type.id)) throw new Error("This component type already exists");
+        this.types.set(type.id, type);
         return type;
     }
 
-    public loadScene(id: string, data: SceneData): string{
-        if (this.scenes.has(id)) throw new Error("Scene already exists")
-        const scene = new GatesECS();
-        for (let key in data.components){
-
+    public get(id: string): ComponentType<unknown> | undefined {
+        if (id != this.prevId) {
+            this.prevType = this.get(id);
+            this.prevId = id;
         }
-        return id;
+        return this.prevType;
+    }
+
+    public getOrThrow(id: string): ComponentType<unknown> {
+        this.get(id);
+        if (this.prevType === undefined) throw new Error("Unknown component type; " + id);
+        return this.prevType;
     }
 }
