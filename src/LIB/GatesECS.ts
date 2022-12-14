@@ -222,7 +222,7 @@ export class GatesECS {
 
     // SYSTEMS
 
-    public addSystem(system: System): System {
+    public addSystem<S extends System>(system: S): S {
         if (this._isInitialized) throw new Error("Already initalized");
         // Add
         const set = new Map<Entity, EntityData>();

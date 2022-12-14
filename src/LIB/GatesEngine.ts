@@ -21,6 +21,7 @@ function optimizeSceneData(data: SceneData): SceneData {
     return data;
 }
 
+// Saving and loading
 export class Scene extends GatesECS {
     private _savedState: SceneData | null = null;
 
