@@ -1,3 +1,5 @@
+// @ts-strict
+
 import { ComponentType, GatesECS } from "./GatesECS";
 
 export const enum TickPhase {
@@ -7,11 +9,15 @@ export const enum TickPhase {
     PRESENTATION = 3,
 }
 
+export type EntityData = [number, number[] | null];
+
+export type ComponentData = [number, string, unknown];
+
 export type SceneData = {
     // ID + CHILDREN
-    entities: [number, number[] | null][]
+    entities: EntityData[]
     // ID + TYPE + DATA
-    components: [number, string, unknown][]
+    components: ComponentData[]
 }
 
 function optimizeSceneData(data: SceneData): SceneData {
@@ -56,6 +62,7 @@ export class Scene extends GatesECS {
 
     public revert(): void {
         if (this._savedState === null) throw new Error("Cannot revert to empty state");
+        if (this._isInitialized) throw new Error("Reset before reverting")
         this.reset();
         this.load(this._savedState);
     }

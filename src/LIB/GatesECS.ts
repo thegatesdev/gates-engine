@@ -148,9 +148,9 @@ export class GatesECS {
         return this.entities.get(entity);
     }
 
-    protected getOrCreateEntityData(entity: Entity): EntityData {
+    private getOrCreateEntityData(entity: Entity): EntityData {
         let data = this.entities!.get(entity);
-        if (data === undefined) throw new Error("Cannot add to non existant entity");
+        if (data === undefined) throw new Error("Entity does not exist");
         if (data === null) {
             data = new EntityData();
             this.entities!.set(entity, data);
@@ -206,8 +206,8 @@ export class GatesECS {
                 data.children.delete(e);
                 if (this.isComponent(e)) data.confirmedComponentTypes.delete(this.getComponent(e)!.type.id);
             }
+            this.checkE(from);
         }
-        this.checkE(from);
         return from;
     }
 

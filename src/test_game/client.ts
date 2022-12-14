@@ -1,3 +1,5 @@
+// @ts-strict
+
 import { Application, Container, Graphics } from "pixi.js";
 import { ComponentType, EntityData, GatesECS, System } from "../LIB/GatesECS";
 import { ComponentTypes, Scene, TickPhase } from "../LIB/GatesEngine";
@@ -40,13 +42,8 @@ const APP = new Application({
 });
 
 const mainSene = new Scene();
-const cam = mainSene.addSystem(new RenderToPositionSystem({x:0,y:0})).offset;
 
-mainSene.init();
 
-APP.ticker.add((delta) => {
-    mainSene.tick(delta);
-})
 
 const player = mainSene.entity();
 const playerPos = mainSene.addComponent(player, PositionComponent.create({ x: 20, y: 50 }));
