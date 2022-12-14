@@ -1,6 +1,6 @@
 // @ts-strict
 
-import { ComponentType, GatesECS } from "./GatesECS";
+import { ComponentType, ECSSave, GatesECS } from "./GatesECS";
 
 export const enum TickPhase {
     EARLY_UPDATE = 0,
@@ -9,62 +9,30 @@ export const enum TickPhase {
     PRESENTATION = 3,
 }
 
-export type EntityData = [number, number[] | null];
+export class SceneManager {
+    private activeScene: [string, GatesECS] | null = null;
+    private readonly allScenes: Map<string, [GatesECS, ECSSave]> = new Map();
 
-export type ComponentData = [number, string, unknown];
-
-export type SceneData = {
-    // ID + CHILDREN
-    entities: EntityData[]
-    // ID + TYPE + DATA
-    components: ComponentData[]
-}
-
-function optimizeSceneData(data: SceneData): SceneData {
-    data.components.sort((a, b) => {
-        return a[1].localeCompare(b[1]);
-    })
-    return data;
-}
-
-// Saving and loading
-export class Scene extends GatesECS {
-    private _savedState: SceneData | null = null;
-
-    public load(data: SceneData): void {
-        if (this._isInitialized) throw new Error("Already initalized");
-        this._savedState = data;
-        for (let [entity, type, compData] of data.components) {
-            this.initComponent(entity, ComponentTypes.getOrThrow(type).create(compData))
-        }
-        for (let [entity, children] of data.entities) {
-            this.initEntity(entity);
-            if (children !== null)
-                this.addTo(entity, ...children);
-        }
+    public activate(id: string): GatesECS {
+        if (this.activeScene !== null && this.activeScene[0] == id) throw new Error("Scene " + id + " already active");
+        const next = this.allScenes.get(id);
+        if (next === undefined) throw new Error("Scene " + id + " does not exist");
+        this.saveActive(true);
+        const ecs = next[0].load(next[1]);
+        this.activeScene = [id, ecs];
+        return ecs;
     }
 
-    public save(): SceneData {
-        if (!this._isInitialized) throw new Error("Not initalized");
-        const data: SceneData = {
-            entities: [] = [],
-            components: [] = []
-        }
-        for (let [entity, entityData] of this.entities!) {
-            data.entities.push([entity, [...entityData!.children]]);
-        }
-        for (let [entity, component] of this.components!) {
-            data.components.push([entity, component.type.id, component.data]);
-        }
-        this._savedState = optimizeSceneData(data);
-        return this._savedState!;
+    public saveActive(reset: boolean): void {
+        if (this.activeScene === null) return;
+        const ecs = this.activeScene[1];
+        this.allScenes.set(this.activeScene[0], [ecs, ecs.createSave()])
+        if (reset) this.activeScene[1].reset();
     }
 
-    public revert(): void {
-        if (this._savedState === null) throw new Error("Cannot revert to empty state");
-        if (this._isInitialized) throw new Error("Reset before reverting")
-        this.reset();
-        this.load(this._savedState);
+    public add(id: string, ecs: GatesECS): void {
+        if (this.allScenes.has(id)) throw new Error("Scene " + id + " already exists");
+        this.allScenes.set(id, [ecs, ecs.createSave()]);
     }
 }
 
