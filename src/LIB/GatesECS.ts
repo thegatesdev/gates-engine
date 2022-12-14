@@ -116,13 +116,15 @@ export class GatesECS {
     }
 
     public reset(): void {
+        this.doTick = false;
+        this.disableSystems();
         for (let [, val] of this.systems) {
             val.clear();
         }
-        this.components.clear();
+        for (let [, val] of this.components) {
+            val.type.destroy?.(val);
+        }
         this.entities.clear();
-        this.doTick = false;
-        this.disableSystems();
     }
 
     private tickDestroy(): void {
@@ -318,7 +320,7 @@ export class GatesECS {
         return data!;
     }
 
-    public load(data: ECSSave): void {
+    public load(data: ECSSave): GatesECS {
         this.reset();
         for (let [entity, type, compData] of data.components) {
             this.initComponent(entity, ComponentTypes.getOrThrow(type).create(compData))
@@ -328,6 +330,7 @@ export class GatesECS {
             if (children !== null)
                 this.addTo(entity, ...children);
         }
+        return this;
     }
 }
 
