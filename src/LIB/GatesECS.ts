@@ -53,15 +53,27 @@ export class EntityData {
     public readonly confirmedComponentTypes: Set<string> = new Set();
 }
 
+// DATA PERSISTENCE
+
+export type SerializedEntity = [number, number[] | null];
+
+export type SerializedComponent = [number, string, unknown];
+
+export type ECSSave = {
+    // ID + CHILDREN
+    entities: SerializedEntity[]
+    // ID + TYPE + DATA
+    components: SerializedComponent[]
+}
+
 // ENGINE
 
 export class GatesECS {
-    protected _isInitialized = false;
-    protected entities: Map<Entity, EntityData | null> | null = null;
-    protected components: Map<Entity, Component<unknown>> | null = null;
+    private readonly entities: Map<Entity, EntityData | null> = new Map();
+    private readonly components: Map<Entity, Component<unknown>> = new Map();
 
-    protected systems = new Map<System, Map<Entity, EntityData>>();
-    protected phasedSystems = new Map<number, Set<System>>();
+    private readonly systems = new Map<System, Map<Entity, EntityData>>();
+    private phasedSystems = new Map<number, Set<System>>();
 
     // --
 
@@ -69,7 +81,8 @@ export class GatesECS {
     private entitiesToDestroy: Entity[] = [];
 
     public doTick = false;
-    // --
+
+    // ROOT OPERATIONS
 
     public tick(deltaTime: number = 1): void {
         if (!this.doTick) return;
@@ -83,20 +96,33 @@ export class GatesECS {
         this.tickDestroy();
     }
 
-    public init(): void {
-        if (this._isInitialized) throw new Error("Already initalized!");
-        this._isInitialized = true;
-        this.entities = new Map();
-        this.components = new Map();
+    public enableSystems(): void {
+        for (const [sys] of this.systems) {
+            sys.enable();
+        }
+    }
+
+    public disableSystems(exceptions: Set<System> | null = null): void {
+        if (exceptions === null) {
+            for (const [sys] of this.systems) {
+                sys.disable();
+            }
+        } else {
+            for (const [sys] of this.systems) {
+                if (!exceptions.has(sys))
+                    sys.disable();
+            }
+        }
     }
 
     public reset(): void {
-        this.entities = null;
-        this.components = null;
         for (let [, val] of this.systems) {
             val.clear();
         }
-        this._isInitialized = false;
+        this.components.clear();
+        this.entities.clear();
+        this.doTick = false;
+        this.disableSystems();
     }
 
     private tickDestroy(): void {
@@ -106,41 +132,17 @@ export class GatesECS {
         }
     }
 
-    // ENTITIES
+    // ENTITY DATA
 
     public entity(): Entity {
         return this.initEntity(this._nextEntityID++);
     }
 
     protected initEntity(entity: Entity): Entity {
+        if (entity < this._nextEntityID) throw new Error("Low entity ID");
+        this._nextEntityID = ++entity;
         this.entities!.set(entity, null);
         return entity;
-    }
-
-    public component(data: Component<unknown>): Entity {
-        return this.initComponent(this.entity(), data);
-    }
-
-    protected initComponent(entity: Entity, data: Component<unknown>): Entity {
-        this.components!.set(entity, data);
-        return entity;
-    }
-
-
-    protected destroy(entity: Entity): void {
-        for (const systemEntities of this.systems.values()) {
-            systemEntities.delete(entity);
-        }
-        this.entities!.delete(entity);
-    }
-
-    public remove(entity: Entity): void {
-        this.entitiesToDestroy.push(entity);
-    }
-
-    public countEntities(): number {
-        if (this.entities === null) return 0;
-        return this.entities.size - this.entitiesToDestroy.length;
     }
 
     private getEntityData(entity: Entity): EntityData | undefined | null {
@@ -156,6 +158,37 @@ export class GatesECS {
             this.entities!.set(entity, data);
         }
         return data;
+    }
+
+    protected destroy(entity: Entity): void {
+        for (const systemEntities of this.systems.values()) {
+            systemEntities.delete(entity);
+        }
+        this.components!.delete(entity);
+        this.entities!.delete(entity);
+    }
+
+    public remove(entity: Entity): void {
+        this.entitiesToDestroy.push(entity);
+    }
+
+    // COMPONENTS
+
+    public component(data: Component<unknown>): Entity {
+        return this.initComponent(this.entity(), data);
+    }
+
+    protected initComponent(entity: Entity, data: Component<unknown>): Entity {
+        if (entity < this._nextEntityID) throw new Error("Low entity ID");
+        this._nextEntityID = ++entity;
+        this.components!.set(entity, data);
+        return entity;
+    }
+
+
+    public countEntities(): number {
+        if (this.entities === null) return 0;
+        return this.entities.size - this.entitiesToDestroy.length;
     }
 
     public getComponentData<T>(component: Entity, type?: ComponentType<T>): T | undefined {
@@ -223,7 +256,6 @@ export class GatesECS {
     // SYSTEMS
 
     public addSystem<S extends System>(system: S): S {
-        if (this._isInitialized) throw new Error("Already initalized");
         // Add
         const set = new Map<Entity, EntityData>();
         this.systems.set(system, set);
@@ -248,7 +280,7 @@ export class GatesECS {
         }));
     }
 
-    // --
+    // MAPPING
 
     protected checkE(entity: Entity): void {
         const data = this.getEntityData(entity);
@@ -268,6 +300,70 @@ export class GatesECS {
             sysData.delete(entity);
             system.onUncomplete?.(this, entity, data);
         }
+    }
+
+    // DATA PERSISTENCE
+
+    public createSave(): ECSSave {
+        const data: ECSSave = {
+            entities: [] = [],
+            components: [] = []
+        }
+        for (let [entity, entityData] of this.entities!) {
+            data.entities.push([entity, [...entityData!.children]]);
+        }
+        for (let [entity, component] of this.components!) {
+            data.components.push([entity, component.type.id, component.data]);
+        }
+        return data!;
+    }
+
+    public load(data: ECSSave): void {
+        this.reset();
+        for (let [entity, type, compData] of data.components) {
+            this.initComponent(entity, ComponentTypes.getOrThrow(type).create(compData))
+        }
+        for (let [entity, children] of data.entities) {
+            this.initEntity(entity);
+            if (children !== null)
+                this.addTo(entity, ...children);
+        }
+    }
+}
+
+// Move same component types together to use ComponentTypes caching.
+function optimizeSave(data: ECSSave): ECSSave {
+    data.components.sort((a, b) => {
+        return a[1].localeCompare(b[1]);
+    })
+    return data;
+}
+
+export const ComponentTypes = new class {
+    private readonly types: Map<string, ComponentType<unknown>> = new Map();
+
+    // Cache
+    private prevId: string | undefined = undefined;
+    private prevType: ComponentType<unknown> | undefined = undefined;
+
+    public add<T extends ComponentType<unknown>>(type: T): T {
+        if (this.types.has(type.id)) throw new Error("This component type already exists");
+        this.types.set(type.id, type);
+        return type;
+    }
+
+    public get(id: string): ComponentType<unknown> | undefined {
+        if (id != this.prevId) {
+            this.prevType = this.get(id);
+            this.prevId = id;
+        }
+        return this.prevType;
+    }
+
+    public getOrThrow(id: string): ComponentType<unknown> {
+        this.get(id);
+        if (this.prevType === undefined) throw new Error("Unknown component type; " + id);
+        return this.prevType;
     }
 }
 
