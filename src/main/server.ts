@@ -12,14 +12,16 @@ app.set('views', __dirname);
 app.set('view engine', 'ejs')
 
 
-app.use("test_game", express.static("/dist/test_game/"));
+app.use(express.static("dist/client/"));
 
 // --
 
 app.get('/', (req, res) => {
-  res.render("./index.ejs", {serverList: {
-    "one": "onelink",
-  }});
+  res.render("./index.ejs", {
+    serverList: {
+      "one": "onelink",
+    }
+  });
 });
 
 app.listen(port);

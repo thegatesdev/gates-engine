@@ -1,6 +1,6 @@
 // @ts-strict
 
-import { ComponentType, ECSSave, GatesECS } from "./GatesECS";
+import { GatesECS } from "./GatesECS";
 
 export const enum TickPhase {
     EARLY_UPDATE = 0,
@@ -9,57 +9,31 @@ export const enum TickPhase {
     PRESENTATION = 3,
 }
 
-export class SceneManager {
-    private activeScene: [string, GatesECS] | null = null;
-    private readonly allScenes: Map<string, [GatesECS, ECSSave]> = new Map();
+export type Vector = { x: number, y: number };
 
-    public activate(id: string): GatesECS {
-        if (this.activeScene !== null && this.activeScene[0] == id) throw new Error("Scene " + id + " already active");
-        const next = this.allScenes.get(id);
-        if (next === undefined) throw new Error("Scene " + id + " does not exist");
-        this.saveActive(true);
-        const ecs = next[0].load(next[1]);
-        this.activeScene = [id, ecs];
-        return ecs;
+export abstract class SimpleSystem extends GatesECS.System {
+    public onTick(ecs: GatesECS.GatesECS, deltaTime: number): void {
+        for (const e of this.entities) {
+            this.onEntityUpdate(ecs, e, deltaTime);
+        }
     }
-
-    public saveActive(reset: boolean): void {
-        if (this.activeScene === null) return;
-        const ecs = this.activeScene[1];
-        this.allScenes.set(this.activeScene[0], [ecs, ecs.createSave()])
-        if (reset) this.activeScene[1].reset();
-    }
-
-    public add(id: string, ecs: GatesECS): void {
-        if (this.allScenes.has(id)) throw new Error("Scene " + id + " already exists");
-        this.allScenes.set(id, [ecs, ecs.createSave()]);
-    }
+    protected abstract onEntityUpdate(ecs: GatesECS.GatesECS, entity: number, deltaTime: number): void;
 }
 
-export const ComponentTypes = new class {
-    private readonly types: Map<string, ComponentType<unknown>> = new Map();
+export const Transform = new GatesECS.ComponentType<Vector>;
+export const Velocity = new GatesECS.ComponentType<Vector>;
 
-    // Cache
-    private prevId: string | undefined = undefined;
-    private prevType: ComponentType<unknown> | undefined = undefined;
-
-    public add<T extends ComponentType<unknown>>(type: T): T {
-        if (this.types.has(type.id)) throw new Error("This component type already exists");
-        this.types.set(type.id, type);
-        return type;
-    }
-
-    public get(id: string): ComponentType<unknown> | undefined {
-        if (id != this.prevId) {
-            this.prevType = this.get(id);
-            this.prevId = id;
+export class VelocitySystem extends SimpleSystem {
+    protected onEntityUpdate(ecs: GatesECS.GatesECS, entity: number, deltaTime: number): void {
+        const it = ecs.getComponents(entity, Transform);
+        for (const vel of ecs.getComponents(entity, Velocity)) {
+            if (vel.x == 0 && vel.y == 0) continue;
+            for (const trs of it) {
+                trs.x += vel.x;
+                trs.y += vel.y;
+            }
         }
-        return this.prevType;
     }
-
-    public getOrThrow(id: string): ComponentType<unknown> {
-        this.get(id);
-        if (this.prevType === undefined) throw new Error("Unknown component type; " + id);
-        return this.prevType;
-    }
+    public phase: number = TickPhase.PHYSICS;
+    public componentTypes: GatesECS.ComponentType[] = [Velocity, Transform];
 }

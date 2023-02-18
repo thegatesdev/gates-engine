@@ -1,50 +1,36 @@
 // @ts-strict
-
-import { Application, Container, Graphics } from "pixi.js";
-import { ComponentType, EntityData, GatesECS, System } from "../LIB/GatesECS";
-import { ComponentTypes, Scene, TickPhase } from "../LIB/GatesEngine";
-
-// COMPONENTS
-
-const PositionComponent = ComponentTypes.add(new ComponentType<{ x: number, y: number }>("position"));
-const RenderContainerComponent = ComponentTypes.add(new ComponentType<{ container: Container, positionComp: number }>("render_container"));
-
-// SYSTEMS
-
-class RenderToPositionSystem extends System{
-    public componentsRequired: Set<ComponentType<unknown>> = new Set([PositionComponent, RenderContainerComponent]);
-    public phase: number = TickPhase.PRESENTATION;
-    constructor(public offset: {x: number, y: number}){
-        super();
-    }
-    public onUpdate(ecs: GatesECS, entities: Map<number, EntityData>, deltaTime: number): void {
-        throw new Error("Method not implemented.");
-    }
-}
-
-// UTIL
-
-type KeyCallback = {
-    value: string,
-    isUp: boolean, isDown: boolean,
-    press: (() => void) | undefined;
-    release: (() => void) | undefined;
-    downHandler: (e: KeyboardEvent) => void;
-    upHandler: (e: KeyboardEvent) => void;
-    unsubscribe: () => void;
-}
-
-// INIT
+import { Application, Graphics } from "pixi.js";
+import { GatesECS } from "../LIB/GatesECS";
+import { Transform, Velocity, VelocitySystem } from "../LIB/GatesEngine";
+import { Render, RenderSystem } from "./common";
 
 const APP = new Application({
-    autoDensity: true,
+    background: 0,
     resizeTo: window,
-});
+})
+const ECS = new GatesECS.GatesECS();
+window.document.body.appendChild(APP.view as any);
+APP.ticker.add(tick);
 
-const mainSene = new Scene();
+function tick(dt: number) {
+    ECS.tick(dt);
+}
 
+// Systems
 
+const SYS_RENDER = new RenderSystem(APP.stage).enable();
 
-const player = mainSene.entity();
-const playerPos = mainSene.addComponent(player, PositionComponent.create({ x: 20, y: 50 }));
-mainSene.addComponent(player, RenderContainerComponent.create({ positionComp: playerPos, container: new Graphics().beginFill(0xfff).drawRect(0, 0, 40, 30) }));
+ECS.addSystems(
+    SYS_RENDER,
+
+    new VelocitySystem().enable(),
+);
+
+const testEntity = ECS.entity();
+{
+    ECS.addComponent(testEntity, Transform, { x: 0, y: 0 });
+    ECS.addComponent(testEntity, Velocity, { x: 1, y: -1 });
+    ECS.addComponent(testEntity, Render, new Graphics().beginFill(0xffffff).drawRect(0, 0, 200, 200));
+}
+
+ECS.doTick = true;

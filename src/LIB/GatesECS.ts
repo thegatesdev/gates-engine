@@ -1,411 +1,242 @@
 // @ts-strict
 
-// TYPES
-export type Entity = number
+export namespace GatesECS {
 
-export type Component<D> = {
-    type: ComponentType<D>;
-    data: D;
-};
+    // TYPES
 
-export class ComponentType<D>{
-    constructor(public readonly id: string) {
-    }
-    public create(data: D): Component<D> {
-        return { type: this, data: data }
-    }
-    public destroy?(data: D): void;
-}
+    export abstract class System {
+        private enabled: boolean = false;
+        public abstract phase: number;
 
-// BASE
+        public abstract componentTypes: ComponentType[];
 
-export abstract class System {
-    private enabled: boolean = false;
-    public abstract componentsRequired: Set<ComponentType<unknown>>;
-    public abstract phase: number;
+        entities: Set<number> = new Set();
 
-    public abstract onUpdate(ecs: GatesECS, entities: Map<Entity, EntityData>, deltaTime: number): void;
-    public onEnable?(): void;
-    public onDisable?(): void;
+        public onTick?(ecs: GatesECS, deltaTime: number): void;
+        public onMatch?(ecs: GatesECS, entity: number): void;
+        public onUnmatch?(ecs: GatesECS, entity: number, comp: number): void;
+        public onEnable?(): void;
+        public onDisable?(): void;
 
-    public enable(): void {
-        if (this.enabled) return;
-        this.enabled = true;
-        this.onEnable?.();
-    }
+        public enable(): this {
+            if (!this.enabled) {
+                this.enabled = true;
+                this.onEnable?.();
+            }
+            return this;
+        }
 
-    public disable(): void {
-        if (!this.enabled) return;
-        this.enabled = false;
-        this.onDisable?.();
-    }
+        public disable(): this {
+            if (this.enabled) {
+                this.enabled = false;
+                this.onDisable?.();
+            }
+            return this;
+        }
 
-    get isEnabled(): boolean {
-        return this.enabled;
+        public get isEnabled(): boolean {
+            return this.enabled;
+        }
     }
 
-    public onComplete?(ecs: GatesECS, entity: Entity, data: EntityData): void;
-    public onUncomplete?(ecs: GatesECS, entity: Entity, data: EntityData): void;
-}
+    export class ComponentType<_D = unknown>{
+        readonly systems: Set<System> = new Set();
+    }
 
-export class EntityData {
-    public readonly children: Set<Entity> = new Set();
-    public readonly confirmedComponentTypes: Set<string> = new Set();
-}
+    type ComponentData<D = unknown> = {
+        data: D;
+        type: ComponentType<D>;
+    }
 
-// DATA PERSISTENCE
+    class EntityData {
+        private _components: Set<number> | null = null;
+        public get components(): Set<number> {
+            if (this._components == null) this._components = new Set();
+            return this._components;
+        }
+        public get hasComponents(): boolean {
+            return this._components != null && this._components.size != 0;
+        }
+    }
 
-export type SerializedEntity = [number, number[] | null];
+    // ENGINE
 
-export type SerializedComponent = [number, string, unknown];
+    export class GatesECS {
+        private entities: (EntityData | null)[] = [];
+        private components: (ComponentData | null)[] = [];
 
-export type ECSSave = {
-    // ID + CHILDREN
-    entities: SerializedEntity[]
-    // ID + TYPE + DATA
-    components: SerializedComponent[]
-}
+        private canAddSystems = true;
+        private systems: System[] = [];
 
-// ENGINE
+        // --
 
-export class GatesECS {
-    private readonly entities: Map<Entity, EntityData | null> = new Map();
-    private readonly components: Map<Entity, Component<unknown>> = new Map();
+        private entitiesToDestroy: number[] = [];
+        private destroyed: number[] = [];
 
-    private readonly systems = new Map<System, Map<Entity, EntityData>>();
-    private phasedSystems = new Map<number, Set<System>>();
+        public doTick = false;
 
-    // --
+        // UTILITY
 
-    private _nextEntityID = 0;
-    private entitiesToDestroy: Entity[] = [];
+        public entityCount(): number {
+            if (this.entities === null) return 0;
+            return this.entities.length - this.entitiesToDestroy.length;
+        }
 
-    public doTick = false;
+        // ROOT OPERATIONS
 
-    // ROOT OPERATIONS
-
-    public tick(deltaTime: number = 1): void {
-        if (!this.doTick) return;
-        for (const systems of this.phasedSystems.values()) {
-            for (let system of systems) {
-                if (system.isEnabled) {
-                    system.onUpdate(this, this.systems.get(system)!, deltaTime);
+        public tick(deltaTime: number = 1): void {
+            if (!this.doTick) return;
+            for (const sys of this.systems) {
+                if (sys.isEnabled) {
+                    sys.onTick!(this, deltaTime);
                 }
             }
-        }
-        this.tickDestroy();
-    }
+            this.tickDestroy();
 
-    public enableSystems(): void {
-        for (const [sys] of this.systems) {
-            sys.enable();
         }
-    }
 
-    public disableSystems(exceptions: Set<System> | null = null): void {
-        if (exceptions === null) {
-            for (const [sys] of this.systems) {
-                sys.disable();
-            }
-        } else {
-            for (const [sys] of this.systems) {
-                if (!exceptions.has(sys))
-                    sys.disable();
+        private tickDestroy(): void {
+            const len = this.entitiesToDestroy.length;
+            for (let i = 0; i < len; i++) {
+                this.destroyEntity(this.entitiesToDestroy.pop()!);
             }
         }
-    }
 
-    public reset(): void {
-        this.doTick = false;
-        this.disableSystems();
-        for (let [, val] of this.systems) {
-            val.clear();
+        // ENTITIES
+
+        public entity(): number {
+            return this.entities.push(new EntityData()) - 1;
         }
-        for (let [, val] of this.components) {
-            val.type.destroy?.(val);
+
+        private entityData(entity: number): EntityData | null {
+            if (entity >= this.entities.length) return null;
+            return this.entities[entity];
         }
-        this.entities.clear();
-    }
 
-    private tickDestroy(): void {
-        const len = this.entitiesToDestroy.length;
-        for (let i = 0; i < len; i++) {
-            this.destroy(this.entitiesToDestroy.pop()!);
-        }
-    }
-
-    // ENTITY DATA
-
-    public entity(): Entity {
-        return this.initEntity(this._nextEntityID++);
-    }
-
-    protected initEntity(entity: Entity): Entity {
-        if (entity < this._nextEntityID) throw new Error("Low entity ID");
-        this._nextEntityID = ++entity;
-        this.entities!.set(entity, null);
-        return entity;
-    }
-
-    private getEntityData(entity: Entity): EntityData | undefined | null {
-        if (this.entities === null) return null;
-        return this.entities.get(entity);
-    }
-
-    private getOrCreateEntityData(entity: Entity): EntityData {
-        let data = this.entities!.get(entity);
-        if (data === undefined) throw new Error("Entity does not exist");
-        if (data === null) {
-            data = new EntityData();
-            this.entities!.set(entity, data);
-        }
-        return data;
-    }
-
-    protected destroy(entity: Entity): void {
-        for (const systemEntities of this.systems.values()) {
-            systemEntities.delete(entity);
-        }
-        this.components!.delete(entity);
-        this.entities!.delete(entity);
-    }
-
-    public remove(entity: Entity): void {
-        this.entitiesToDestroy.push(entity);
-    }
-
-    // COMPONENTS
-
-    public component(data: Component<unknown>): Entity {
-        return this.initComponent(this.entity(), data);
-    }
-
-    protected initComponent(entity: Entity, data: Component<unknown>): Entity {
-        if (entity < this._nextEntityID) throw new Error("Low entity ID");
-        this._nextEntityID = ++entity;
-        this.components!.set(entity, data);
-        return entity;
-    }
-
-
-    public countEntities(): number {
-        if (this.entities === null) return 0;
-        return this.entities.size - this.entitiesToDestroy.length;
-    }
-
-    public getComponentData<T>(component: Entity, type?: ComponentType<T>): T | undefined {
-        const data = this.components!.get(component);
-        if (data !== undefined && (!type || data.type == type)) {
-            return data.data as T;
-        }
-        return undefined;
-    }
-
-    protected getComponent<T>(component: Entity, type?: ComponentType<T>): Component<T> | undefined {
-        const data = this.components!.get(component);
-        if (data !== undefined && (!type || data.type == type)) {
-            return data as Component<T>;
-        }
-        return undefined;
-    }
-
-
-    public addComponent(onto: Entity, data: Component<unknown>): Entity {
-        const comp = this.component(data);
-        this.addTo(onto, comp);
-        return comp;
-    }
-
-    public isEntity(id: number): boolean {
-        return this.entities!.has(id);
-    }
-
-    public isComponent(id: number): boolean {
-        return this.components!.has(id);
-    }
-
-    public addTo(onto: Entity, ...entities: Entity[]): Entity {
-        const data = this.getOrCreateEntityData(onto);
-        for (const e of entities) {
-            data.children.add(e);
-            if (this.isComponent(e)) data.confirmedComponentTypes.add(this.getComponent(e)!.type.id)
-        }
-        this.checkE(onto);
-        return onto;
-    }
-
-    public removeFrom(from: Entity, ...entities: Entity[]): Entity {
-        const data = this.getEntityData(from);
-        if (data !== null && data !== undefined) {
-            for (const e of entities) {
-                data.children.delete(e);
-                if (this.isComponent(e)) data.confirmedComponentTypes.delete(this.getComponent(e)!.type.id);
+        protected destroyEntity(entity: number): void {
+            for (const sys of this.systems) {
+                sys.entities.delete(entity);
             }
-            this.checkE(from);
+            this.entities[entity] = null;
+            this.destroyed.push(entity);
         }
-        return from;
-    }
 
-    public hasChildren(from: Entity, ...children: Entity[]): boolean {
-        const data = this.getEntityData(from);
-        if (data === null || data === undefined) return false;
-        for (let en of children) {
-            if (!data.children.has(en)) return false;
+        public removeEntity(entity: number): void {
+            if (entity >= this.entities.length) return;
+            this.entitiesToDestroy.push(entity);
         }
-        return true;
-    }
 
-    // SYSTEMS
+        public addComponent<T>(entity: number, type: ComponentType<T>, data: T): number {
+            return this.addComponentRef(entity, this.component(type, data));
+        }
 
-    public addSystem<S extends System>(system: S): S {
-        // Add
-        const set = new Map<Entity, EntityData>();
-        this.systems.set(system, set);
-        // Add system to phase
-        if (!this.phasedSystems.has(system.phase)) {
-            this.phasedSystems.set(system.phase, new Set());
+        public addComponentRef(entity: number, component: number): number {
+            const entityData = this.entityData(entity);
+            if (entityData == null) throw new Error("Entity not found");
+            entityData.components.add(component);
+            const compData = this.componentData(component);
+            if (compData != null) this.componentChange(entity, component, compData.type.systems);
+            return component;
+        }
+
+        public removeComponent(entity: number, component: number) {
+            const entityData = this.entityData(entity);
+            if (entityData == null) throw new Error("Entity not found");
+            entityData.components.delete(component);
+            const compData = this.componentData(component);
+            if (compData != null) this.componentChange(entity, component, compData.type.systems);
+        }
+
+        // COMPONENTS
+
+        private componentData(component: number): ComponentData | null {
+            if (component >= this.components.length) return null;
+            return this.components[component];
+        }
+
+        public component<T>(type: ComponentType<T>, data: T): number {
+            return this.components.push({ type: type, data: data }) - 1;
+        }
+
+        public getComponent<T>(ref: number, type: ComponentType<T> | null = null): T | null {
+            if (ref >= this.components.length) return null;
+            const comp = this.components[ref];
+            if (comp == null) return null;
+            if (type != null && comp.type != type) return null;
+            return comp.data as T;
+        }
+
+        public getComponents<T>(entity: number, type: ComponentType<T>): T[] {
+            const data = this.entityData(entity);
+            const output: T[] = [];
+            if (data == null || !data.hasComponents) return output;
+            for (const comp of data.components) {
+                const compData = this.componentData(comp);
+                if (compData != null && compData.type == type) output.push(compData.data as T);
+            }
+            return output;
+        }
+
+        public hasComponent(entity: number, component: number): boolean {
+            const data = this.entityData(entity);
+            if (data == null || !data.hasComponents) return false;
+            return data.components.has(component);
+        }
+
+        // SYSTEMS
+
+        public addSystems(...systems: System[]): void {
+            if (!this.canAddSystems) throw new Error("Cannot add systems anymore");
+            for (let sys of systems) {
+                this.systems.push(sys);
+                for (const type of sys.componentTypes) {
+                    type.systems.add(sys);
+                }
+            }
             this.sortPhases();
         }
-        this.phasedSystems.get(system.phase)!.add(system);
-        // Check for matching entities
-        for (const [entity, data] of this.entities!) {
-            // Don't use checkE since that checks all systems
-            if (data === null) continue;
-            this.checkES(entity, data, system);
+
+        protected sortPhases(): void {
+            this.systems = this.systems.sort((a, b) => a.phase - b.phase);
         }
-        return system;
-    }
 
-    protected sortPhases(): void {
-        this.phasedSystems = new Map([...this.phasedSystems].sort(([a,], [b,]) => {
-            return a - b;
-        }));
-    }
+        // MAPPING
 
-    // MAPPING
-
-    protected checkE(entity: Entity): void {
-        const data = this.getEntityData(entity);
-        if (!data) return;
-        for (const system of this.systems.keys()) {
-            this.checkES(entity, data, system);
+        private componentChange(entity: number, comp: number, systems: Iterable<System> = this.systems) {
+            this.canAddSystems = false;
+            const data = this.entityData(entity);
+            if (data == null) throw new Error("This entity does not exist");
+            if (!data.hasComponents) {
+                for (const sys of systems) {
+                    if (sys.entities.delete(entity))
+                        sys.onUnmatch?.(this, entity, comp);
+                }
+                return;
+            }
+            let have = this.componentTypes(data);
+            for (const sys of systems) {
+                if (!sys.entities.has(entity) && this.hasAllComponents(have, sys.componentTypes)) {
+                    sys.entities.add(entity)
+                    sys.onMatch?.(this, entity);
+                } else if (sys.entities.delete(entity))
+                    sys.onUnmatch?.(this, entity, comp);
+            }
         }
-    }
 
-    protected checkES(entity: Entity, data: EntityData, system: System): void {
-        const sysData = this.systems.get(system);
-        if (!sysData) return;
-        if (data !== null && hasComponentsOf(data, system.componentsRequired)) {
-            sysData.set(entity, data);
-            system.onComplete?.(this, entity, data);
-        } else {
-            sysData.delete(entity);
-            system.onUncomplete?.(this, entity, data);
+        private hasAllComponents(have: Set<ComponentType>, needs: Iterable<ComponentType>): boolean {
+            for (const need of needs) {
+                if (!have.has(need)) return false;
+            }
+            return true;
         }
-    }
 
-    // DATA PERSISTENCE
-
-    public createSave(): ECSSave {
-        const data: ECSSave = {
-            entities: [] = [],
-            components: [] = []
+        private componentTypes(data: EntityData): Set<ComponentType> {
+            const set = new Set<ComponentType>();
+            for (const component of data.components) {
+                const compData = this.componentData(component);
+                if (compData != null) set.add(compData.type);
+            }
+            return set;
         }
-        for (let [entity, entityData] of this.entities!) {
-            data.entities.push([entity, [...entityData!.children]]);
-        }
-        for (let [entity, component] of this.components!) {
-            data.components.push([entity, component.type.id, component.data]);
-        }
-        return data!;
-    }
-
-    public load(data: ECSSave): GatesECS {
-        this.reset();
-        for (let [entity, type, compData] of data.components) {
-            this.initComponent(entity, ComponentTypes.getOrThrow(type).create(compData))
-        }
-        for (let [entity, children] of data.entities) {
-            this.initEntity(entity);
-            if (children !== null)
-                this.addTo(entity, ...children);
-        }
-        return this;
-    }
-}
-
-// Move same component types together to use ComponentTypes caching.
-function optimizeSave(data: ECSSave): ECSSave {
-    data.components.sort((a, b) => {
-        return a[1].localeCompare(b[1]);
-    })
-    return data;
-}
-
-export const ComponentTypes = new class {
-    private readonly types: Map<string, ComponentType<unknown>> = new Map();
-
-    // Cache
-    private prevId: string | undefined = undefined;
-    private prevType: ComponentType<unknown> | undefined = undefined;
-
-    public add<T extends ComponentType<unknown>>(type: T): T {
-        if (this.types.has(type.id)) throw new Error("This component type already exists");
-        this.types.set(type.id, type);
-        return type;
-    }
-
-    public get(id: string): ComponentType<unknown> | undefined {
-        if (id != this.prevId) {
-            this.prevType = this.get(id);
-            this.prevId = id;
-        }
-        return this.prevType;
-    }
-
-    public getOrThrow(id: string): ComponentType<unknown> {
-        this.get(id);
-        if (this.prevType === undefined) throw new Error("Unknown component type; " + id);
-        return this.prevType;
-    }
-}
-
-// UTIL
-
-export class Prefab {
-    protected components: (() => Component<unknown>)[] = [];
-    protected createFn!: (eng: GatesECS, entity: Entity) => void;
-
-    public addComponent(callback: () => Component<unknown>) {
-        this.components.push(callback);
-    }
-
-    onCreate(fn: (eng: GatesECS, entity: number) => void) {
-        this.createFn = fn;
-    }
-
-    create(engine: GatesECS): Entity {
-        const entity = engine.entity();
-        this.components.forEach(callback => engine.component(callback()));
-        this.createFn?.apply(this, [engine, entity]);
-        return entity;
-    }
-}
-
-// UTIL FUNCTIONS
-
-export function hasComponentsOf(e: EntityData, types: Set<ComponentType<unknown>>) {
-    const have = e.confirmedComponentTypes;
-    for (const type of types) {
-        if (!have.has(type.id)) { return false; }
-    }
-    return true;
-}
-
-export function* getComponentsOf<D>(ecs: GatesECS, e: EntityData, type: ComponentType<D>): Generator<D> {
-    let data;
-    for (const child of e.children) {
-        data = ecs.getComponentData(child, type);
-        if (data) yield data;
     }
 }
