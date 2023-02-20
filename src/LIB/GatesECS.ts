@@ -215,7 +215,7 @@ export namespace GatesECS {
             }
             let have = this.componentTypes(data);
             for (const sys of systems) {
-                if (!sys.entities.has(entity) && this.hasAllComponents(have, sys.componentTypes)) {
+                if (this.hasAllComponents(have, sys.componentTypes)) {
                     sys.entities.add(entity)
                     sys.onMatch?.(this, entity);
                 } else if (sys.entities.delete(entity))

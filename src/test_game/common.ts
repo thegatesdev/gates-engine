@@ -9,7 +9,7 @@ export class RenderSystem extends SimpleSystem {
     }
     protected onEntityUpdate(ecs: GatesECS.GatesECS, entity: number): void {
         for (const trs of ecs.getComponents(entity, CTransform)) {
-            for (const render of ecs.getComponents(entity, Render)) {
+            for (const render of ecs.getComponents(entity, CRender)) {
                 render.x = trs.x;
                 render.y = -trs.y;
             }
@@ -17,23 +17,23 @@ export class RenderSystem extends SimpleSystem {
         }
     }
     public onMatch(ecs: GatesECS.GatesECS, entity: number): void {
-        for (const render of ecs.getComponents(entity, Render)) {
+        for (const render of ecs.getComponents(entity, CRender)) {
             this.container.addChild(render);
         }
     }
     public onUnmatch(ecs: GatesECS.GatesECS, entity: number, comp: number): void {
-        const render = ecs.getComponent(comp, Render);
+        const render = ecs.getComponent(comp, CRender);
         if (render != null) {
             this.container.removeChild(render);
         } else {
-            for (const render of ecs.getComponents(entity, Render)) {
+            for (const render of ecs.getComponents(entity, CRender)) {
                 this.container.removeChild(render);
             }
         }
     }
     public phase: number = TickPhase.UPDATE;
-    public componentTypes: GatesECS.ComponentType[] = [Render, CTransform];
+    public componentTypes: GatesECS.ComponentType[] = [CRender, CTransform];
 }
 
 
-export const Render = new GatesECS.ComponentType<DisplayObject>;
+export const CRender = new GatesECS.ComponentType<DisplayObject>;
