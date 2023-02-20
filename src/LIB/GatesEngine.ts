@@ -27,26 +27,40 @@ function edgeNormals(vertices: Vector[]): Vector[] {
     for (let i = 0; i < vertices.length; i++) {
         let p1 = vertices[i];
         let p2 = vertices[i + 1 == vertices.length ? 0 : i + 1];
-        normals.push(new Vector(-(p2.y - p1.y), p2.x - p1.x));
+        normals.push(new Vector(-(p2.y - p1.y), p2.x - p1.x).normalize());
     }
     return normals;
 }
 
-export function hitBoxOverlap(h1: Shape, of1: MutableVector, h2: Shape, of2: MutableVector): boolean {
-    const norm1 = h1.edgeNormals;
-    for (const axis of norm1) {
+export function hitBoxOverlap(h1: Shape, of1: MutableVector, h2: Shape, of2: MutableVector): false | Vector {
+    let overlap = 0;
+    let smallest = null;
+    for (const axis of h1.edgeNormals) {
         let proj1 = project(h1, axis, of1);
         let proj2 = project(h2, axis, of2);
         if (!(proj1.x <= proj2.y && proj1.y >= proj2.x)) return false;
+        else {
+            let o = (Math.min(proj1.y, proj2.y) - Math.max(proj1.x, proj2.x) + 1);
+            if (smallest == null || o < overlap) {
+                smallest = axis;
+                overlap = o;
+            }
+        }
     }
-    const norm2 = h2.edgeNormals;
-    for (const axis of norm2) {
+    for (const axis of h2.edgeNormals) {
         let proj1 = project(h1, axis, of1);
         let proj2 = project(h2, axis, of2);
         if (!(proj1.x <= proj2.y && proj1.y >= proj2.x)) return false;
+        else {
+            let o = (Math.min(proj1.y, proj2.y) - Math.max(proj1.x, proj2.x) + 1);
+            if (smallest == null || o < overlap) {
+                smallest = axis;
+                overlap = o;
+            }
+        }
     }
 
-    return true;
+    return smallest!.multiply(overlap);
 }
 
 function project(hitbox: Shape, axis: Vector, offset: MutableVector): Vector {
@@ -142,10 +156,13 @@ export class HitboxSystem extends SimpleSystem {
             let otherTrs = ecs.getComponents(other, CTransform)[0];
             for (const otherHt of ecs.getComponents(other, CHitbox)) {
                 for (const ht of hitboxes) {
-                    if (hitBoxOverlap(ht, trs, otherHt, otherTrs)) {
-                        console.log("Overlap");
-                        return;
-                    }
+                    const overlap = hitBoxOverlap(ht, trs, otherHt, otherTrs);
+                    if (overlap == false) continue;
+                    const move = overlap.divide(2);
+                    trs.x += move.x;
+                    trs.y += move.y;
+                    otherTrs.x -= move.x;
+                    otherTrs.y -= move.y;
                 }
             }
         }
