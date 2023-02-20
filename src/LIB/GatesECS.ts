@@ -39,11 +39,11 @@ export namespace GatesECS {
         }
     }
 
-    export class ComponentType<_D extends {} = any>{
+    export class ComponentType<_D = unknown>{
         readonly systems: Set<System> = new Set();
     }
 
-    type ComponentData<D extends {} = any> = {
+    type ComponentData<D = unknown> = {
         data: D;
         type: ComponentType<D>;
     }
@@ -126,7 +126,7 @@ export namespace GatesECS {
             this.entitiesToDestroy.push(entity);
         }
 
-        public addComponent<T extends {}>(entity: number, type: ComponentType<T>, data: T): number {
+        public addComponent<T>(entity: number, type: ComponentType<T>, data: T): number {
             return this.addComponentRef(entity, this.component(type, data));
         }
 
@@ -154,11 +154,11 @@ export namespace GatesECS {
             return this.components[component];
         }
 
-        public component<T extends {}>(type: ComponentType<T>, data: T): number {
+        public component<T>(type: ComponentType<T>, data: T): number {
             return this.components.push({ type: type, data: data }) - 1;
         }
 
-        public getComponent<T extends {}>(ref: number, type: ComponentType<T> | null = null): T | null {
+        public getComponent<T>(ref: number, type: ComponentType<T> | null = null): T | null {
             if (ref >= this.components.length) return null;
             const comp = this.components[ref];
             if (comp == null) return null;
@@ -166,7 +166,7 @@ export namespace GatesECS {
             return comp.data as T;
         }
 
-        public getComponents<T extends {}>(entity: number, type: ComponentType<T>): T[] {
+        public getComponents<T>(entity: number, type: ComponentType<T>): T[] {
             const data = this.entityData(entity);
             const output: T[] = [];
             if (data == null || !data.hasComponents) return output;

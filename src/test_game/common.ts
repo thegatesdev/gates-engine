@@ -1,14 +1,14 @@
 // @ts-strict
 import { Container, DisplayObject } from "pixi.js";
 import { GatesECS } from "../LIB/GatesECS";
-import { SimpleSystem, TickPhase, Transform } from "../LIB/GatesEngine";
+import { CTransform, SimpleSystem, TickPhase } from "../LIB/GatesEngine";
 
 export class RenderSystem extends SimpleSystem {
     constructor(public readonly container: Container) {
         super();
     }
     protected onEntityUpdate(ecs: GatesECS.GatesECS, entity: number): void {
-        for (const trs of ecs.getComponents(entity, Transform)) {
+        for (const trs of ecs.getComponents(entity, CTransform)) {
             for (const render of ecs.getComponents(entity, Render)) {
                 render.x = trs.x;
                 render.y = -trs.y;
@@ -32,7 +32,7 @@ export class RenderSystem extends SimpleSystem {
         }
     }
     public phase: number = TickPhase.UPDATE;
-    public componentTypes: GatesECS.ComponentType[] = [Render, Transform];
+    public componentTypes: GatesECS.ComponentType[] = [Render, CTransform];
 }
 
 
