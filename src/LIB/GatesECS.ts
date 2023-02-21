@@ -57,6 +57,8 @@ export namespace GatesECS {
         public get hasComponents(): boolean {
             return this._components != null && this._components.size != 0;
         }
+        // TODO Cache Map<CompType, List<comp>>
+        // Invalidate on ComponentChange
     }
 
     // ENGINE
@@ -215,7 +217,7 @@ export namespace GatesECS {
             }
             let have = this.componentTypes(data);
             for (const sys of systems) {
-                if (this.hasAllComponents(have, sys.componentTypes)) {
+                if (hasAll(have, sys.componentTypes)) {
                     sys.entities.add(entity)
                     sys.onMatch?.(this, entity);
                 } else if (sys.entities.delete(entity))
@@ -223,12 +225,6 @@ export namespace GatesECS {
             }
         }
 
-        private hasAllComponents(have: Set<ComponentType>, needs: Iterable<ComponentType>): boolean {
-            for (const need of needs) {
-                if (!have.has(need)) return false;
-            }
-            return true;
-        }
 
         private componentTypes(data: EntityData): Set<ComponentType> {
             const set = new Set<ComponentType>();
@@ -238,5 +234,10 @@ export namespace GatesECS {
             }
             return set;
         }
+    }
+
+    function hasAll<T>(have: Set<T>, needs: Iterable<T>): boolean {
+        for (const need of needs) if (!have.has(need)) return false;
+        return true;
     }
 }
