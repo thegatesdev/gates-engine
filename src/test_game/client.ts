@@ -2,7 +2,7 @@
 import { GameInputs } from "game-inputs";
 import { Application, Graphics } from "pixi.js";
 import { GatesECS } from "../LIB/GatesECS";
-import { AABBShape, CDrag, CHitbox, CScript, CTransform, CVelocity, DragSystem, GravitySystem, HitboxSystem, ScriptableSystem, VelocitySystem } from "../LIB/GatesEngine";
+import { AABBShape, AnyShape, CDrag, CHitbox, CScript, CTransform, CVelocity, DragSystem, GravitySystem, HitboxSystem, ScriptableSystem, VelocitySystem } from "../LIB/GatesEngine";
 import { CRender, RenderSystem } from "./common";
 
 // Base
@@ -49,7 +49,7 @@ ECS.doTick = true;
 // Init
 
 const player = ECS.entity();
-const PLAYER_SPEED = 2;
+const PLAYER_SPEED = 1;
 ECS.addComponent(player, CTransform, { x: 0, y: 0 });
 ECS.addComponent(player, CVelocity, { x: 0, y: 0 });
 ECS.addComponent(player, CDrag, 1);
@@ -65,6 +65,6 @@ ECS.addComponent(player, CScript, (ecs, entity) => {
 });
 
 const ground = ECS.entity();
-ECS.addComponent(ground, CTransform, { x: 600, y: -300 });
-ECS.addComponent(ground, CRender, new Graphics().beginFill(0x123456).drawRect(0, 0, 500, 200));
-ECS.addComponent(ground, CHitbox, new AABBShape(500, 200));
+ECS.addComponent(ground, CTransform, { x: 199, y: -300 });
+ECS.addComponent(ground, CRender, new Graphics().beginFill(0x123456).drawPolygon(100, 0, 200, 200, 0, 200));
+ECS.addComponent(ground, CHitbox, new AnyShape(100, 0, 200, 200, 0, 200));
