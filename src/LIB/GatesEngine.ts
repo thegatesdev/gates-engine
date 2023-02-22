@@ -45,6 +45,7 @@ function edgeNormals(vertices: Vector[]): Vector[] {
 
 export function hitBoxOverlap(h1: Shape, of1: MutableVector, h2: Shape, of2: MutableVector): false | Vector {
     let overlap = 0;
+    let sameOverlapCount = 0;
     let smallest = null;
     for (const axis of h1.edgeNormals) {
         const proj1 = project(h1, axis, of1);
@@ -55,6 +56,11 @@ export function hitBoxOverlap(h1: Shape, of1: MutableVector, h2: Shape, of2: Mut
             if (smallest == null || o < overlap) {
                 smallest = axis;
                 overlap = o;
+                sameOverlapCount = 0;
+            } else if (o == overlap) {
+                sameOverlapCount++;
+                smallest = smallest.add(axis);
+                overlap += o;
             }
         }
     }
@@ -67,11 +73,16 @@ export function hitBoxOverlap(h1: Shape, of1: MutableVector, h2: Shape, of2: Mut
             if (smallest == null || o < overlap) {
                 smallest = axis;
                 overlap = o;
+                sameOverlapCount = 0;
+            } else if (o == overlap) {
+                sameOverlapCount++;
+                smallest = smallest.add(axis);
+                overlap += o;
             }
         }
     }
 
-    return smallest!.multiply(overlap);
+    return smallest!.divide(sameOverlapCount++).multiply(overlap / sameOverlapCount);
 }
 
 function project(hitbox: Shape, axis: Vector, offset: MutableVector): Vector {
