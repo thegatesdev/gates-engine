@@ -8,8 +8,19 @@ export type MutableVector = { x: number, y: number };
 // Util
 
 export abstract class Shape {
-    abstract get vertices(): Vector[];
-    abstract get edgeNormals(): Vector[];
+    abstract vertices: Vector[];
+    abstract edgeNormals: Vector[];
+}
+
+export class AnyShape extends Shape {
+    readonly edgeNormals: Vector[];
+    readonly vertices: Vector[] = [];
+    constructor(...vertices: number[]) {
+        super();
+        if (vertices.length % 2 != 0) throw new Error("Invalid vertex amount");
+        for (let i = 0; i < vertices.length; i++)this.vertices.push(new Vector(vertices[i], vertices[++i]));
+        this.edgeNormals = edgeNormals(this.vertices);
+    }
 }
 
 export class AABBShape extends Shape {
@@ -36,11 +47,11 @@ export function hitBoxOverlap(h1: Shape, of1: MutableVector, h2: Shape, of2: Mut
     let overlap = 0;
     let smallest = null;
     for (const axis of h1.edgeNormals) {
-        let proj1 = project(h1, axis, of1);
-        let proj2 = project(h2, axis, of2);
+        const proj1 = project(h1, axis, of1);
+        const proj2 = project(h2, axis, of2);
         if (!(proj1.x <= proj2.y && proj1.y >= proj2.x)) return false;
         else {
-            let o = (Math.min(proj1.y, proj2.y) - Math.max(proj1.x, proj2.x) + 1);
+            const o = Math.min(proj1.y, proj2.y) - Math.max(proj1.x, proj2.x) + 1;
             if (smallest == null || o < overlap) {
                 smallest = axis;
                 overlap = o;
@@ -48,11 +59,11 @@ export function hitBoxOverlap(h1: Shape, of1: MutableVector, h2: Shape, of2: Mut
         }
     }
     for (const axis of h2.edgeNormals) {
-        let proj1 = project(h1, axis, of1);
-        let proj2 = project(h2, axis, of2);
+        const proj1 = project(h1, axis, of1);
+        const proj2 = project(h2, axis, of2);
         if (!(proj1.x <= proj2.y && proj1.y >= proj2.x)) return false;
         else {
-            let o = (Math.min(proj1.y, proj2.y) - Math.max(proj1.x, proj2.x) + 1);
+            const o = Math.min(proj1.y, proj2.y) - Math.max(proj1.x, proj2.x) + 1;
             if (smallest == null || o < overlap) {
                 smallest = axis;
                 overlap = o;
@@ -64,10 +75,10 @@ export function hitBoxOverlap(h1: Shape, of1: MutableVector, h2: Shape, of2: Mut
 }
 
 function project(hitbox: Shape, axis: Vector, offset: MutableVector): Vector {
-    let min = axis.dot(hitbox.vertices[0].add(new Vector(offset.x, offset.y)));
+    let min = axis.dot(hitbox.vertices[0].subtract(new Vector(offset.x, offset.y)));
     let max = min;
-    for (const vert of hitbox.vertices) {
-        let p = axis.dot(vert.add(new Vector(offset.x, offset.y)));
+    for (let i = 1; i < hitbox.vertices.length; i++) {
+        let p = axis.dot(hitbox.vertices[i].subtract(new Vector(offset.x, offset.y)));
         if (p < min) min = p;
         else if (p > max) max = p;
     }
@@ -82,12 +93,12 @@ export const enum TickPhase {
 }
 
 export abstract class SimpleSystem extends GatesECS.System {
-    public onTick(ecs: GatesECS.GatesECS, deltaTime: number): void {
+    public onTick(ecs: GatesECS.GatesECS, dt: number): void {
         for (const e of this.entities) {
-            this.onEntityUpdate(ecs, e, deltaTime);
+            this.onEntityUpdate(ecs, e, dt);
         }
     }
-    protected abstract onEntityUpdate(ecs: GatesECS.GatesECS, entity: number, deltaTime: number): void;
+    protected abstract onEntityUpdate(ecs: GatesECS.GatesECS, entity: number, dt: number): void;
 }
 
 // Component
@@ -148,7 +159,7 @@ export class VelocitySystem extends SimpleSystem {
     public componentTypes: GatesECS.ComponentType[] = [CVelocity, CTransform];
 }
 export class HitboxSystem extends SimpleSystem {
-    protected onEntityUpdate(ecs: GatesECS.GatesECS, entity: number, deltaTime: number): void {
+    protected onEntityUpdate(ecs: GatesECS.GatesECS, entity: number, dt: number): void {
         const hitboxes = ecs.getComponents(entity, CHitbox);
         const trs = ecs.getComponents(entity, CTransform)[0];
         for (const other of this.entities) {
@@ -159,10 +170,10 @@ export class HitboxSystem extends SimpleSystem {
                     const overlap = hitBoxOverlap(ht, trs, otherHt, otherTrs);
                     if (overlap == false) continue;
                     const move = overlap.divide(2);
-                    trs.x += move.x;
-                    trs.y += move.y;
-                    otherTrs.x -= move.x;
-                    otherTrs.y -= move.y;
+                    trs.x -= move.x;
+                    trs.y -= move.y;
+                    otherTrs.x += move.x;
+                    otherTrs.y += move.y;
                 }
             }
         }
