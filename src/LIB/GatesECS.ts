@@ -50,11 +50,13 @@ export namespace GatesECS {
 
     class EntityData {
         private _components: Set<number> | null = null;
-        public get components(): Set<number> {
+        componentCache: Map<ComponentType, unknown[]> | null = null;
+
+        get components(): Set<number> {
             if (this._components == null) this._components = new Set();
             return this._components;
         }
-        public get hasComponents(): boolean {
+        get hasComponents(): boolean {
             return this._components != null && this._components.size != 0;
         }
     }
@@ -158,18 +160,31 @@ export namespace GatesECS {
             return this.components.push({ type: type, data: data }) - 1;
         }
 
-        public getComponent<T>(ref: number, type: ComponentType<T> | null = null): T | null {
+        public getComponent<T>(ref: number, type: ComponentType<T> | null = null): ComponentData<T> | null {
             if (ref >= this.components.length) return null;
             const comp = this.components[ref];
             if (comp == null) return null;
             if (type != null && comp.type != type) return null;
-            return comp.data as T;
+            return comp as ComponentData<T>;
         }
 
         public getComponents<T>(entity: number, type: ComponentType<T>): T[] {
             const data = this.entityData(entity);
+            if (data == null || !data.hasComponents) return [];
+
+            let output;
+            if (data.componentCache == null) data.componentCache = new Map();
+            else output = data.componentCache.get(type);
+
+            if (output == undefined) {
+                output = this._getComponents(data, type);
+                data.componentCache.set(type, output);
+            }
+            return output as T[];
+        }
+
+        private _getComponents<T>(data: EntityData, type: ComponentType<T>): T[] {
             const output: T[] = [];
-            if (data == null || !data.hasComponents) return output;
             for (const comp of data.components) {
                 const compData = this.componentData(comp);
                 if (compData != null && compData.type == type) output.push(compData.data as T);
@@ -203,10 +218,17 @@ export namespace GatesECS {
         // MAPPING
 
         private componentChange(entity: number, comp: number, systems: Iterable<System> = this.systems) {
-            this.canAddSystems = false;
             const data = this.entityData(entity);
             if (data == null) throw new Error("This entity does not exist");
-            if (!data.hasComponents) {
+            this.canAddSystems = false;
+
+            if (data.componentCache != null) { // Remove cache
+                const compData = this.getComponent(comp);
+                if (compData == null) throw new Error("This component does not exist");
+                data.componentCache?.delete(compData.type);
+            }
+
+            if (!data.hasComponents) { // No components means no systems to match
                 for (const sys of systems) {
                     if (sys.entities.delete(entity))
                         sys.onUnmatch?.(this, entity, comp);
