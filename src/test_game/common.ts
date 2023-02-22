@@ -24,7 +24,7 @@ export class RenderSystem extends SimpleSystem {
     public onUnmatch(ecs: GatesECS.GatesECS, entity: number, comp: number): void {
         const render = ecs.getComponent(comp, CRender);
         if (render != null) {
-            this.container.removeChild(render);
+            this.container.removeChild(render.data);
         } else {
             for (const render of ecs.getComponents(entity, CRender)) {
                 this.container.removeChild(render);
