@@ -66,6 +66,6 @@ ECS.addComponent(player, CScript, (ecs, entity) => {
 });
 
 const ground = ECS.entity();
-ECS.addComponent(ground, CTransform, { x: 199, y: -300 });
+ECS.addComponent(ground, CTransform, { x: 199, y: -150 });
 ECS.addComponent(ground, CRender, new Graphics().beginFill(0x123456).drawPolygon(100, 0, 200, 200, 0, 200));
 ECS.addComponent(ground, CHitbox, new AnyShape(100, 0, 200, 200, 0, 200));

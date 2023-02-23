@@ -44,46 +44,43 @@ function edgeNormals(vertices: Vector[]): Vector[] {
 }
 
 export function hitBoxOverlap(h1: Shape, of1: Vector, h2: Shape, of2: Vector): false | Vector {
-    let overlap = 0;
-    let smallest = null;
+    let overlap = Infinity;
+    let smallest: Vector | null = null;
+    let wasDouble = false;
     for (const axis of h1.edgeNormals) {
         const proj1 = project(h1, axis, of1);
         const proj2 = project(h2, axis, of2);
         if (!(proj1.x <= proj2.y && proj1.y >= proj2.x)) return false;
-        else {
-            const o = Math.min(proj1.y, proj2.y) - Math.max(proj1.x, proj2.x) + 1;
-            if (smallest == null || o < overlap) {
-                overlap = o;
-                smallest = axis;
-            } else if (o == overlap) {
-                smallest = smallest.add(axis).normalize();
-            }
-            // (1,1) (1,-1) to (1,0)
+        const o = Math.min(proj1.y, proj2.y) - Math.max(proj1.x, proj2.x) + 1;
+        if (smallest == null || o < overlap) {
+            overlap = o;
+            smallest = axis;
+        } else if (o == overlap) {
+            smallest = smallest.add(axis);
         }
     }
     for (const axis of h2.edgeNormals) {
         const proj1 = project(h1, axis, of1);
         const proj2 = project(h2, axis, of2);
         if (!(proj1.x <= proj2.y && proj1.y >= proj2.x)) return false;
-        else {
-            const o = Math.min(proj1.y, proj2.y) - Math.max(proj1.x, proj2.x) + 1;
-            if (smallest == null || o < overlap) {
-                overlap = o;
-                smallest = axis;
-            } else if (o == overlap) {
-                smallest = smallest.add(axis);
-            }
+        const o = Math.min(proj1.y, proj2.y) - Math.max(proj1.x, proj2.x) + 1;
+        if (smallest == null || o < overlap) {
+            overlap = o;
+            smallest = axis;
+        } else if (o == overlap) {
+            smallest = smallest.add(axis);
         }
     }
-
-    return smallest!.normalize().multiply(overlap);
+    if (smallest == null) return false;
+    console.log("overlap: " + overlap);
+    return smallest!.multiply(overlap);
 }
 
 function project(hitbox: Shape, axis: Vector, offset: Vector): Vector {
-    let min = axis.dot(hitbox.vertices[0].subtract(offset));
+    let min = axis.dot(hitbox.vertices[0].add(offset));
     let max = min;
     for (let i = 1; i < hitbox.vertices.length; i++) {
-        let p = axis.dot(hitbox.vertices[i].subtract(offset));
+        let p = axis.dot(hitbox.vertices[i].add(offset));
         if (p < min) min = p;
         else if (p > max) max = p;
     }
@@ -167,15 +164,21 @@ export class HitboxSystem extends SimpleSystem {
     protected onEntityUpdate(ecs: GatesECS.GatesECS, entity: number, dt: number): void {
         const hitboxes = ecs.getComponents(entity, CHitbox);
         const trs = ecs.getComponents(entity, CTransform)[0];
-        const pos = new Vector(trs.x, trs.y);
+        const pos = new Vector(trs.x, -trs.y);
         for (const other of this.entities) {
             if (other == entity) continue;
             let otherTrs = ecs.getComponents(other, CTransform)[0];
-            const otherPos = new Vector(otherTrs.x, otherTrs.y);
+            const otherPos = new Vector(otherTrs.x, -otherTrs.y);
             for (const otherHt of ecs.getComponents(other, CHitbox)) {
                 for (const ht of hitboxes) {
                     const overlap = hitBoxOverlap(ht, pos, otherHt, otherPos);
-                    if (overlap == false || overlap.length() == 0) continue;
+                    if (overlap == false) continue;
+                    console.log("%d %d", overlap.x, overlap.y);
+                    const move = overlap.multiply(0.5);
+                    trs.x += move.x;
+                    trs.y -= move.y;
+                    otherTrs.x -= move.x;
+                    otherTrs.y += move.y;
                 }
             }
         }
