@@ -25,6 +25,7 @@ INPUT.bind('key-down', 'KeyS', 'ArrowDown');
 INPUT.bind('key-right', 'KeyD', 'ArrowRight');
 INPUT.bind('key-left', 'KeyA', 'ArrowLeft');
 
+
 // Systems
 
 ECS.addSystems(
